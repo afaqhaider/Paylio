@@ -516,13 +516,13 @@ class DatabaseHelper {
     return await db.update('people', person.toMap(), where: 'id = ?', whereArgs: [person.id]);
   }
 
-  Future<int> deletePerson(int id) async {
+  Future<int> deletePerson(String id) async {
     if (kIsWeb) return 0;
     final db = await instance.database;
     return await db.delete('people', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<Map<String, double>> getPersonSummary(int personId) async {
+  Future<Map<String, double>> getPersonSummary(String personId) async {
     if (kIsWeb) return {};
     final db = await instance.database;
     final txs = await db.query('transactions', where: 'personId = ?', whereArgs: [personId]);

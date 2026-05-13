@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../Core/database_helper.dart';
 import '../../Core/settings_provider.dart';
+import '../Transactions/transaction_provider.dart';
+import '../Transactions/transaction_model.dart';
 import 'person_model.dart';
+import 'person_provider.dart';
 import 'person_detail_screen.dart';
 
 class PeopleScreen extends StatefulWidget {
@@ -14,45 +16,44 @@ class PeopleScreen extends StatefulWidget {
 }
 
 class _PeopleScreenState extends State<PeopleScreen> {
-  List<PersonModel> people = [];
-  Map<int, Map<String, double>> summaries = {};
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    loadPeople();
-  }
-
-  Future<void> loadPeople() async {
-    setState(() => isLoading = true);
-    try {
-      final allPeople = await DatabaseHelper.instance.getPeople();
-      Map<int, Map<String, double>> tempSummaries = {};
-      for (var p in allPeople) {
-        tempSummaries[p.id!] = await DatabaseHelper.instance.getPersonSummary(p.id!);
+  Map<String, double> _calculatePersonSummary(String personId, List<TransactionModel> transactions) {
+    double lent = 0;
+    double borrowed = 0;
+    double repaidReceived = 0;
+    double repaidPaid = 0;
+    
+    for (var tx in transactions) {
+      if (tx.personId == personId) {
+        if (tx.type == 'lend') lent += tx.amount;
+        else if (tx.type == 'borrow') borrowed += tx.amount;
+        else if (tx.type == 'repayment_received') repaidReceived += tx.amount;
+        else if (tx.type == 'repayment_paid') repaidPaid += tx.amount;
       }
-      setState(() {
-        people = allPeople;
-        summaries = tempSummaries;
-        isLoading = false;
-      });
-    } catch (e) {
-      debugPrint("Error loading people: $e");
-      setState(() => isLoading = false);
     }
+    
+    return {
+      'lent': lent,
+      'borrowed': borrowed,
+      'repaidReceived': repaidReceived,
+      'repaidPaid': repaidPaid,
+      'netBalance': (lent - repaidReceived) - (borrowed - repaidPaid),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     final currency = Provider.of<SettingsProvider>(context).currency;
+    final personProvider = Provider.of<PersonProvider>(context);
+    final txProvider = Provider.of<TransactionProvider>(context);
+    
     final format = NumberFormat('#,##0.00');
+    final people = personProvider.people;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Borrow & Lend'),
       ),
-      body: isLoading
+      body: txProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
           : people.isEmpty
               ? const Center(child: Text('No contacts added yet', style: TextStyle(color: Colors.grey)))
@@ -61,7 +62,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                   itemCount: people.length,
                   itemBuilder: (context, index) {
                     final person = people[index];
-                    final summary = summaries[person.id] ?? {};
+                    final summary = _calculatePersonSummary(person.id ?? '', txProvider.transactions);
                     final netBalance = summary['netBalance'] ?? 0;
 
                     return Card(
@@ -72,7 +73,6 @@ class _PeopleScreenState extends State<PeopleScreen> {
                             context,
                             MaterialPageRoute(builder: (context) => PersonDetailScreen(person: person)),
                           );
-                          loadPeople();
                         },
                         leading: CircleAvatar(
                           backgroundColor: const Color(0xFF0F766E).withOpacity(0.1),

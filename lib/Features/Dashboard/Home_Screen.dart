@@ -49,10 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final screens = [
       DashboardScreen(onTabChange: _changeTab),
       const TransactionsScreen(),
-      const PeopleScreen(),
-      const CategoriesScreen(),
       const BudgetsScreen(),
-      const AccountsScreen(),
       const SettingsScreen(),
     ];
 
@@ -79,29 +76,14 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Activity',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline, size: 20),
-            activeIcon: Icon(Icons.people, size: 20),
-            label: 'People',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.category_outlined, size: 20),
-            activeIcon: Icon(Icons.category, size: 20),
-            label: 'Categories',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(Icons.pie_chart_outline, size: 20),
             activeIcon: Icon(Icons.pie_chart, size: 20),
             label: 'Budgets',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet_outlined, size: 20),
-            activeIcon: Icon(Icons.account_balance_wallet, size: 20),
-            label: 'Accounts',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined, size: 20),
-            activeIcon: Icon(Icons.settings, size: 20),
-            label: 'Settings',
+            icon: Icon(Icons.more_horiz, size: 20),
+            activeIcon: Icon(Icons.more_horiz, size: 20),
+            label: 'More',
           ),
         ],
       ),

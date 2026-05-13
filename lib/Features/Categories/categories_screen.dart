@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../Core/database_helper.dart';
+import 'package:provider/provider.dart';
 import 'category_model.dart';
+import 'category_provider.dart';
 import 'add_category_screen.dart';
 
 class CategoriesScreen extends StatefulWidget {
@@ -11,28 +12,9 @@ class CategoriesScreen extends StatefulWidget {
 }
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
-  List<CategoryModel> categories = [];
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    loadCategories();
-  }
-
-  Future<void> loadCategories() async {
-    setState(() => isLoading = true);
-    final data = await DatabaseHelper.instance.getCategories();
-    setState(() {
-      categories = data;
-      isLoading = false;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final expenseCategories = categories.where((c) => c.type == 'expense').toList();
-    final incomeCategories = categories.where((c) => c.type == 'income').toList();
+    final catProvider = Provider.of<CategoryProvider>(context);
     const primaryTeal = Color(0xFF0F766E);
 
     return DefaultTabController(
@@ -58,14 +40,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             ],
           ),
         ),
-        body: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : TabBarView(
-                children: [
-                  categoryList(expenseCategories, const Color(0xFFEF4444)),
-                  categoryList(incomeCategories, const Color(0xFF10B981)),
-                ],
-              ),
+        body: TabBarView(
+          children: [
+            categoryList(catProvider.expenseCategories, const Color(0xFFEF4444)),
+            categoryList(catProvider.incomeCategories, const Color(0xFF10B981)),
+          ],
+        ),
         floatingActionButton: FloatingActionButton(
           heroTag: 'categoriesFab',
           onPressed: () async {
@@ -73,7 +53,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               context,
               MaterialPageRoute(builder: (context) => const AddCategoryScreen()),
             );
-            loadCategories();
           },
           child: const Icon(Icons.add),
         ),
@@ -97,7 +76,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: typeColor.withOpacity(0.08),
+                color: typeColor.withAlpha(20),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -114,20 +93,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   context: context,
                   builder: (context) => AlertDialog(
                     title: const Text('Delete Category'),
-                    content: Text('Delete "${category.name}"?'),
+                    content: Text('Are you sure you want to delete "${category.name}"?'),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true), 
-                        child: const Text('Delete', style: TextStyle(color: Color(0xFFDC2626))),
-                      ),
+                      TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
                     ],
                   ),
                 );
-
-                if (confirm == true) {
-                  await DatabaseHelper.instance.deleteCategory(category.id!);
-                  loadCategories();
+                if (confirm == true && category.id != null) {
+                  final provider = Provider.of<CategoryProvider>(context, listen: false);
+                  await provider.deleteCategory(category.id!);
                 }
               },
             ),

@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../Core/database_helper.dart';
 import '../../Core/settings_provider.dart';
 import '../Accounts/account_model.dart';
+import '../Accounts/account_provider.dart';
 import '../Categories/category_model.dart';
+import '../Categories/category_provider.dart';
 import '../People/person_model.dart';
+import '../People/person_provider.dart';
 import 'add_expense_screen.dart';
 import 'transaction_model.dart';
+import 'transaction_provider.dart';
 
 class TransactionsScreen extends StatefulWidget {
   final String? accountFilter;
@@ -19,63 +22,25 @@ class TransactionsScreen extends StatefulWidget {
 }
 
 class _TransactionsScreenState extends State<TransactionsScreen> {
-  List<TransactionModel> allTransactions = [];
-  List<TransactionModel> filteredTransactions = [];
-  
-  List<AccountModel> accounts = [];
-  List<CategoryModel> categories = [];
-  List<PersonModel> people = [];
-
   // Filter State
   String selectedPeriod = 'This Month';
   DateTimeRange? customDateRange;
   String? filterAccount;
   String? filterType;
   String? filterCategory;
-  int? filterPersonId;
-
-  bool isLoading = true;
+  String? filterPersonId;
 
   @override
   void initState() {
     super.initState();
     filterAccount = widget.accountFilter;
-    loadInitialData();
   }
 
-  Future<void> loadInitialData() async {
-    setState(() => isLoading = true);
-    try {
-      final accs = await DatabaseHelper.instance.getAccounts();
-      final cats = await DatabaseHelper.instance.getCategories();
-      final allPeople = await DatabaseHelper.instance.getPeople();
-      final txs = await DatabaseHelper.instance.getTransactions();
-      
-      setState(() {
-        accounts = accs;
-        categories = cats;
-        people = allPeople;
-        allTransactions = txs;
-        applyFilters();
-        isLoading = false;
-      });
-    } catch (e) {
-      debugPrint("Error loading transactions: $e");
-      setState(() => isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error loading data: $e"), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  void applyFilters() {
+  List<TransactionModel> getFilteredTransactions(List<TransactionModel> allTransactions) {
     final now = DateTime.now();
     DateTime? start;
     DateTime? end;
 
-    // 1. Time Period Logic
     switch (selectedPeriod) {
       case 'Today':
         start = DateTime(now.year, now.month, now.day);
@@ -102,28 +67,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         break;
     }
 
-    setState(() {
-      filteredTransactions = allTransactions.where((t) {
-        // Date check
-        if (start != null && end != null) {
-          if (t.date.isBefore(start) || t.date.isAfter(end)) return false;
-        }
-
-        // Account check
-        if (filterAccount != null && t.account != filterAccount) return false;
-
-        // Type check
-        if (filterType != null && t.type != filterType) return false;
-
-        // Category check
-        if (filterCategory != null && t.category != filterCategory) return false;
-
-        // Person check
-        if (filterPersonId != null && t.personId != filterPersonId) return false;
-
-        return true;
-      }).toList();
-    });
+    return allTransactions.where((t) {
+      if (start != null && end != null) {
+        if (t.date.isBefore(start) || t.date.isAfter(end)) return false;
+      }
+      if (filterAccount != null && t.account != filterAccount) return false;
+      if (filterType != null && t.type != filterType) return false;
+      if (filterCategory != null && t.category != filterCategory) return false;
+      if (filterPersonId != null && t.personId != filterPersonId) return false;
+      return true;
+    }).toList();
   }
 
   Future<void> pickCustomRange() async {
@@ -138,22 +91,29 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         customDateRange = picked;
         selectedPeriod = 'Custom';
       });
-      applyFilters();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String currency = Provider.of<SettingsProvider>(context).currency;
+    final txProvider = Provider.of<TransactionProvider>(context);
+    final accProvider = Provider.of<AccountProvider>(context);
+    final catProvider = Provider.of<CategoryProvider>(context);
+    final personProvider = Provider.of<PersonProvider>(context);
+    final settings = Provider.of<SettingsProvider>(context);
+    final String currency = settings.currency;
+
+    final filteredTransactions = getFilteredTransactions(txProvider.transactions);
+    final isLoading = txProvider.isLoading;
 
     // Aggregates
-    double totalIncome = 0;
-    double totalExpense = 0;
+    double totalIn = 0;
+    double totalOut = 0;
     Map<String, List<TransactionModel>> grouped = {};
 
     for (var t in filteredTransactions) {
-      if (t.type == 'income') totalIncome += t.amount;
-      if (t.type == 'expense') totalExpense += t.amount;
+      if (['income', 'borrow', 'repayment_received'].contains(t.type)) totalIn += t.amount;
+      if (['expense', 'lend', 'repayment_paid'].contains(t.type)) totalOut += t.amount;
 
       String dateKey = DateFormat('yyyy-MM-dd').format(t.date);
       if (!grouped.containsKey(dateKey)) grouped[dateKey] = [];
@@ -168,7 +128,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, size: 20),
-            onPressed: loadInitialData,
+            onPressed: () {},
           ),
         ],
       ),
@@ -176,8 +136,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                summaryCard(totalIncome, totalExpense, currency),
-                filterBar(),
+                summaryCard(totalIn, totalOut, currency),
+                filterBar(accProvider.accounts, catProvider.expenseCategories + catProvider.incomeCategories, personProvider.people),
                 Expanded(
                   child: filteredTransactions.isEmpty
                       ? const Center(child: Text('No transactions found', style: TextStyle(color: Colors.grey)))
@@ -192,8 +152,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             double dayIn = 0;
                             double dayOut = 0;
                             for (var t in txs) {
-                              if (t.type == 'income') dayIn += t.amount;
-                              else if (t.type == 'expense') dayOut += t.amount;
+                              if (['income', 'borrow', 'repayment_received'].contains(t.type)) dayIn += t.amount;
+                              else if (['expense', 'lend', 'repayment_paid'].contains(t.type)) dayOut += t.amount;
                             }
 
                             return Column(
@@ -211,22 +171,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         heroTag: 'transactionsFab',
         onPressed: () async {
           await Navigator.push(context, MaterialPageRoute(builder: (context) => const AddExpenseScreen()));
-          loadInitialData();
         },
         child: const Icon(Icons.add),
       ),
     );
   }
 
-  Widget summaryCard(double income, double expense, String currency) {
-    final format = NumberFormat('#,##0.00');
-    // For summary, let's include borrow/repayment received in income and lend/repayment paid in expense
-    double totalIn = 0;
-    double totalOut = 0;
-    for (var t in filteredTransactions) {
-      if (['income', 'borrow', 'repayment_received'].contains(t.type)) totalIn += t.amount;
-      if (['expense', 'lend', 'repayment_paid'].contains(t.type)) totalOut += t.amount;
-    }
+  Widget summaryCard(double totalIn, double totalOut, String currency) {
     final netBalance = totalIn - totalOut;
     
     return Container(
@@ -239,13 +190,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Row(
         children: [
@@ -260,7 +204,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   Widget _divider() {
-    return Container(width: 1, height: 40, margin: const EdgeInsets.symmetric(horizontal: 10), color: Colors.white.withOpacity(0.1));
+    return Container(width: 1, height: 40, margin: const EdgeInsets.symmetric(horizontal: 10), color: Colors.white.withAlpha(25));
   }
 
   Widget summaryItem(String label, double amount, Color color, String currency) {
@@ -269,7 +213,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(label, style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11, fontWeight: FontWeight.w500)),
+          Text(label, style: TextStyle(color: Colors.white.withAlpha(153), fontSize: 11, fontWeight: FontWeight.w500)),
           const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -283,7 +227,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  Widget filterBar() {
+  Widget filterBar(List<AccountModel> accounts, List<CategoryModel> categories, List<PersonModel> people) {
     return Container(
       height: 50,
       margin: const EdgeInsets.only(bottom: 8),
@@ -305,7 +249,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           filterChip(
             label: filterAccount ?? 'All Accounts',
             icon: Icons.account_balance_wallet_rounded,
-            onTap: () => showAccountPicker(),
+            onTap: () => showAccountPicker(accounts),
             isActive: filterAccount != null,
           ),
 
@@ -321,7 +265,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           filterChip(
             label: filterCategory ?? 'All Categories',
             icon: Icons.category_rounded,
-            onTap: () => showCategoryPicker(),
+            onTap: () => showCategoryPicker(categories),
             isActive: filterCategory != null,
           ),
 
@@ -333,7 +277,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     : 'Unknown') 
                 : 'All People',
             icon: Icons.person_rounded,
-            onTap: () => showPersonPicker(),
+            onTap: () => showPersonPicker(people),
             isActive: filterPersonId != null,
           ),
 
@@ -350,7 +294,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   filterPersonId = null;
                   customDateRange = null;
                 });
-                applyFilters();
               },
             ),
         ],
@@ -374,7 +317,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: isActive ? primaryTeal : primaryTeal.withOpacity(0.1)),
+          side: BorderSide(color: isActive ? primaryTeal : primaryTeal.withAlpha(25)),
         ),
       ),
     );
@@ -395,7 +338,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 pickCustomRange();
               } else {
                 setState(() => selectedPeriod = p);
-                applyFilters();
               }
             },
           )).toList(),
@@ -404,7 +346,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  void showAccountPicker() {
+  void showAccountPicker(List<AccountModel> accounts) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -415,7 +357,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               title: const Text('All Accounts', style: TextStyle(fontWeight: FontWeight.bold)),
               onTap: () {
                 setState(() => filterAccount = null);
-                applyFilters();
                 Navigator.pop(context);
               },
             ),
@@ -423,7 +364,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               title: Text(a.name, style: const TextStyle(fontWeight: FontWeight.bold)),
               onTap: () {
                 setState(() => filterAccount = a.name);
-                applyFilters();
                 Navigator.pop(context);
               },
             )),
@@ -441,14 +381,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(title: const Text('All Types', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = null); applyFilters(); Navigator.pop(context); }),
-              ListTile(title: const Text('Income', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'income'); applyFilters(); Navigator.pop(context); }),
-              ListTile(title: const Text('Expense', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'expense'); applyFilters(); Navigator.pop(context); }),
-              ListTile(title: const Text('Transfer', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'transfer'); applyFilters(); Navigator.pop(context); }),
-              ListTile(title: const Text('Borrow', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'borrow'); applyFilters(); Navigator.pop(context); }),
-              ListTile(title: const Text('Lend', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'lend'); applyFilters(); Navigator.pop(context); }),
-              ListTile(title: const Text('Repayment Received', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'repayment_received'); applyFilters(); Navigator.pop(context); }),
-              ListTile(title: const Text('Repayment Paid', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'repayment_paid'); applyFilters(); Navigator.pop(context); }),
+              ListTile(title: const Text('All Types', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = null); Navigator.pop(context); }),
+              ListTile(title: const Text('Income', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'income'); Navigator.pop(context); }),
+              ListTile(title: const Text('Expense', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'expense'); Navigator.pop(context); }),
+              ListTile(title: const Text('Transfer', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'transfer'); Navigator.pop(context); }),
+              ListTile(title: const Text('Borrow', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'borrow'); Navigator.pop(context); }),
+              ListTile(title: const Text('Lend', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'lend'); Navigator.pop(context); }),
+              ListTile(title: const Text('Repayment Received', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'repayment_received'); Navigator.pop(context); }),
+              ListTile(title: const Text('Repayment Paid', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterType = 'repayment_paid'); Navigator.pop(context); }),
             ],
           ),
         ),
@@ -456,7 +396,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  void showPersonPicker() {
+  void showPersonPicker(List<PersonModel> people) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -464,10 +404,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(title: const Text('All People', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterPersonId = null); applyFilters(); Navigator.pop(context); }),
+              ListTile(title: const Text('All People', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterPersonId = null); Navigator.pop(context); }),
               ...people.map((p) => ListTile(
                 title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                onTap: () { setState(() => filterPersonId = p.id); applyFilters(); Navigator.pop(context); },
+                onTap: () { setState(() => filterPersonId = p.id); Navigator.pop(context); },
               )),
             ],
           ),
@@ -476,7 +416,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  void showCategoryPicker() {
+  void showCategoryPicker(List<CategoryModel> categories) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -484,10 +424,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(title: const Text('All Categories', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterCategory = null); applyFilters(); Navigator.pop(context); }),
+              ListTile(title: const Text('All Categories', style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { setState(() => filterCategory = null); Navigator.pop(context); }),
               ...categories.map((c) => ListTile(
                 title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                onTap: () { setState(() => filterCategory = c.name); applyFilters(); Navigator.pop(context); },
+                onTap: () { setState(() => filterCategory = c.name); Navigator.pop(context); },
               )),
             ],
           ),
@@ -545,7 +485,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Widget transactionItem(TransactionModel t, String currency) {
     final isIncome = ['income', 'borrow', 'repayment_received'].contains(t.type);
-    final isExpense = ['expense', 'lend', 'repayment_paid'].contains(t.type);
     final color = t.type == 'income' || t.type == 'repayment_received' ? const Color(0xFF10B981) : 
                   t.type == 'expense' || t.type == 'repayment_paid' ? const Color(0xFFEF4444) : 
                   t.type == 'lend' ? Colors.orange :
@@ -557,11 +496,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       child: ListTile(
         onTap: () async {
           await Navigator.push(context, MaterialPageRoute(builder: (context) => AddExpenseScreen(transaction: t)));
-          loadInitialData();
         },
         leading: Container(
           width: 40, height: 40,
-          decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(color: color.withAlpha(20), borderRadius: BorderRadius.circular(10)),
           child: Icon(isIncome ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, color: color, size: 18),
         ),
         title: Row(

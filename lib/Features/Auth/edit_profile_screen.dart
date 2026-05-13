@@ -52,7 +52,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   children: [
                     CircleAvatar(
                       radius: 50,
-                      backgroundColor: const Color(0xFF0F766E).withOpacity(0.1),
+                      backgroundColor: const Color(0xFF0F766E).withAlpha(25),
                       child: const Icon(Icons.person, size: 50, color: Color(0xFF0F766E)),
                     ),
                     Positioned(

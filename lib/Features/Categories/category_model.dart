@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class CategoryModel {
-  final int? id;
+  final String? id;
   final String name;
   final String type; // 'expense' or 'income'
   final String? icon;
@@ -31,13 +33,37 @@ class CategoryModel {
 
   factory CategoryModel.fromMap(Map<String, dynamic> map) {
     return CategoryModel(
-      id: map['id'] as int?,
+      id: map['id']?.toString(),
       name: map['name'] as String,
       type: map['type'] as String,
       icon: map['icon'] as String?,
       color: map['color'] as String?,
-      isDefault: (map['isDefault'] as int?) == 1,
+      isDefault: map['isDefault'] == 1 || map['isDefault'] == true,
       createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt'] as String) : null,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'name': name,
+      'type': type,
+      'icon': icon,
+      'color': color,
+      'isDefault': isDefault,
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
+    };
+  }
+
+  factory CategoryModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return CategoryModel(
+      id: doc.id,
+      name: data['name'] ?? '',
+      type: data['type'] ?? '',
+      icon: data['icon'],
+      color: data['color'],
+      isDefault: data['isDefault'] ?? false,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
     );
   }
 }

@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class TransactionModel {
-  final int? id;
+  final String? id;
   final String type; // income, expense, transfer, borrow, lend, repayment_received, repayment_paid
   final String category;
   final String account;
@@ -8,7 +10,7 @@ class TransactionModel {
   final double amount;
   final DateTime date;
   final String? attachmentPath;
-  final int? personId; // Linked person for borrow/lend
+  final String? personId; // Changed to String for consistency
 
   TransactionModel({
     this.id,
@@ -40,7 +42,7 @@ class TransactionModel {
 
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
     return TransactionModel(
-      id: map['id'],
+      id: map['id']?.toString(),
       type: map['type'],
       category: map['category'],
       account: map['account'],
@@ -49,12 +51,43 @@ class TransactionModel {
       amount: (map['amount'] as num).toDouble(),
       date: map['date'] != null ? DateTime.parse(map['date']) : DateTime.now(),
       attachmentPath: map['attachmentPath'],
-      personId: map['personId'],
+      personId: map['personId']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'type': type,
+      'category': category,
+      'account': account,
+      'toAccount': toAccount,
+      'note': note,
+      'amount': amount,
+      'date': Timestamp.fromDate(date),
+      'attachmentPath': attachmentPath,
+      'personId': personId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return TransactionModel(
+      id: doc.id,
+      type: data['type'] ?? '',
+      category: data['category'] ?? '',
+      account: data['account'] ?? '',
+      toAccount: data['toAccount'],
+      note: data['note'] ?? '',
+      amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
+      date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      attachmentPath: data['attachmentPath'],
+      personId: data['personId'],
     );
   }
 
   TransactionModel copyWith({
-    int? id,
+    String? id,
     String? type,
     String? category,
     String? account,
@@ -63,7 +96,7 @@ class TransactionModel {
     double? amount,
     DateTime? date,
     String? attachmentPath,
-    int? personId,
+    String? personId,
   }) {
     return TransactionModel(
       id: id ?? this.id,

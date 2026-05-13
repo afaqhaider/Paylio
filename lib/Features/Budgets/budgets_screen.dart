@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../Core/database_helper.dart';
 import '../../Core/settings_provider.dart';
+import '../Transactions/transaction_provider.dart';
 import 'budget_model.dart';
+import 'budget_provider.dart';
 import 'add_budget_screen.dart';
 
 class BudgetsScreen extends StatefulWidget {
@@ -14,62 +15,42 @@ class BudgetsScreen extends StatefulWidget {
 }
 
 class _BudgetsScreenState extends State<BudgetsScreen> {
-  List<BudgetModel> budgets = [];
-  Map<int, double> spendingMap = {};
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    loadBudgets();
-  }
-
-  Future<void> loadBudgets() async {
-    if (!mounted) return;
-    setState(() => isLoading = true);
-    final data = await DatabaseHelper.instance.getBudgets();
-    
-    Map<int, double> tempSpending = {};
-    
-    for (var budget in data) {
-      DateTime start;
-      DateTime end;
-      if (budget.period == 'Weekly') {
-        DateTime budgetDate = DateTime(budget.year, budget.month);
-        start = budgetDate.subtract(Duration(days: budgetDate.weekday - 1));
-        end = start.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
-      } else {
-        start = DateTime(budget.year, budget.month, 1);
-        end = DateTime(budget.year, budget.month + 1, 0, 23, 59, 59);
-      }
-      final spent = await DatabaseHelper.instance.getCategorySpending(
-        budget.category,
-        start,
-        end,
-      );
-      tempSpending[budget.id!] = spent;
+  double calculateSpent(BudgetModel budget, TransactionProvider txProvider) {
+    DateTime start;
+    DateTime end;
+    if (budget.period == 'Weekly') {
+      DateTime budgetDate = DateTime(budget.year, budget.month);
+      start = budgetDate.subtract(Duration(days: budgetDate.weekday - 1));
+      end = start.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+    } else {
+      start = DateTime(budget.year, budget.month, 1);
+      end = DateTime(budget.year, budget.month + 1, 0, 23, 59, 59);
     }
 
-    if (!mounted) return;
-    setState(() {
-      budgets = data;
-      spendingMap = tempSpending;
-      isLoading = false;
-    });
+    return txProvider.transactions.where((t) {
+      return t.category == budget.category &&
+             t.date.isAfter(start.subtract(const Duration(seconds: 1))) &&
+             t.date.isBefore(end.add(const Duration(seconds: 1)));
+    }).fold(0.0, (sum, t) => sum + t.amount);
   }
 
   @override
   Widget build(BuildContext context) {
+    final budgetProvider = Provider.of<BudgetProvider>(context);
+    final txProvider = Provider.of<TransactionProvider>(context);
     final currencyFormat = NumberFormat('#,##0.00');
     final String currency = Provider.of<SettingsProvider>(context).currency;
     const primaryTeal = Color(0xFF0F766E);
+
+    final budgets = budgetProvider.budgets;
+    final isLoading = budgetProvider.isLoading || txProvider.isLoading;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Budgets'),
       ),
       body: RefreshIndicator(
-        onRefresh: loadBudgets,
+        onRefresh: () async {},
         child: isLoading
             ? const Center(child: CircularProgressIndicator())
             : budgets.isEmpty
@@ -79,7 +60,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                     itemCount: budgets.length,
                     itemBuilder: (context, index) {
                       final budget = budgets[index];
-                      final spent = spendingMap[budget.id] ?? 0;
+                      final spent = calculateSpent(budget, txProvider);
                       final percent = budget.amountLimit > 0 ? (spent / budget.amountLimit).clamp(0.0, 1.1) : 0.0;
                       final remaining = budget.amountLimit - spent;
                       
@@ -102,7 +83,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                           borderRadius: BorderRadius.circular(16),
                           onTap: () async {
                             await Navigator.push(context, MaterialPageRoute(builder: (context) => AddBudgetScreen(budget: budget)));
-                            loadBudgets();
                           },
                           onLongPress: () async {
                             showModalBottomSheet(
@@ -117,7 +97,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                                       onTap: () async {
                                         Navigator.pop(context);
                                         await Navigator.push(context, MaterialPageRoute(builder: (context) => AddBudgetScreen(budget: budget)));
-                                        loadBudgets();
                                       },
                                     ),
                                     ListTile(
@@ -125,8 +104,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                                       title: const Text('Delete Budget', style: TextStyle(color: Color(0xFFDC2626))),
                                       onTap: () async {
                                         Navigator.pop(context);
-                                        await DatabaseHelper.instance.deleteBudget(budget.id!);
-                                        loadBudgets();
+                                        if (budget.id != null) {
+                                          await budgetProvider.deleteBudget(budget.id!);
+                                        }
                                       },
                                     ),
                                   ],
@@ -159,7 +139,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
+                                        color: statusColor.withAlpha(25),
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
@@ -214,7 +194,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         heroTag: 'budgetsFab',
         onPressed: () async {
           await Navigator.push(context, MaterialPageRoute(builder: (context) => const AddBudgetScreen()));
-          loadBudgets();
         },
         child: const Icon(Icons.add),
       ),

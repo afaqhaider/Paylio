@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../Core/database_helper.dart';
-import '../../Core/settings_provider.dart';
-import '../Categories/category_model.dart';
-import '../Categories/add_category_screen.dart';
 import 'budget_model.dart';
+import 'budget_provider.dart';
+import '../Categories/category_model.dart';
+import '../Categories/category_provider.dart';
+import '../Categories/add_category_screen.dart';
+import '../../Core/settings_provider.dart';
 
 class AddBudgetScreen extends StatefulWidget {
   final BudgetModel? budget;
@@ -18,7 +19,6 @@ class AddBudgetScreen extends StatefulWidget {
 
 class _AddBudgetScreenState extends State<AddBudgetScreen> {
   String? selectedCategory;
-  List<CategoryModel> categories = [];
   final limitController = TextEditingController();
   final notesController = TextEditingController();
   String selectedPeriod = 'Monthly';
@@ -38,43 +38,19 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     } else {
       limitController.text = "0.00";
     }
-    loadCategories();
-  }
-
-  Future<void> loadCategories([String? newCategoryName]) async {
-    final cats = await DatabaseHelper.instance.getCategoriesByType('expense');
-    
-    final Map<String, CategoryModel> uniqueCats = {};
-    for (var cat in cats) {
-      uniqueCats[cat.name] = cat;
-    }
-    final deduplicatedCats = uniqueCats.values.toList();
-
-    setState(() {
-      categories = deduplicatedCats;
-      if (newCategoryName != null) {
-        selectedCategory = newCategoryName;
-      } else if (selectedCategory != null) {
-        bool exists = categories.any((c) => c.name == selectedCategory);
-        if (!exists) {
-          try {
-            selectedCategory = categories.firstWhere(
-              (c) => c.name.toLowerCase() == selectedCategory?.toLowerCase()
-            ).name;
-          } catch (_) {
-            selectedCategory = categories.isNotEmpty ? categories.first.name : null;
-          }
-        }
-      } else {
-        selectedCategory = categories.isNotEmpty ? categories.first.name : null;
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     bool isEditing = widget.budget != null;
     final String currency = Provider.of<SettingsProvider>(context).currency;
+    final catProvider = Provider.of<CategoryProvider>(context);
+    final budgetProvider = Provider.of<BudgetProvider>(context);
+    final categories = catProvider.expenseCategories;
+
+    if (selectedCategory == null && categories.isNotEmpty) {
+      selectedCategory = categories.first.name;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -113,9 +89,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                     MaterialPageRoute(builder: (context) => const AddCategoryScreen(initialType: 'expense')),
                   );
                   if (result != null && result is String) {
-                    await loadCategories(result);
-                  } else {
-                    await loadCategories();
+                    setState(() => selectedCategory = result);
                   }
                 } else {
                   setState(() => selectedCategory = val);
@@ -223,16 +197,17 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                   );
 
                   if (isEditing) {
-                    await DatabaseHelper.instance.updateBudget(budget);
+                    await budgetProvider.saveBudget(budget);
                   } else {
-                    final existing = await DatabaseHelper.instance.getBudgetByCategoryPeriod(
-                      budget.category,
-                      budget.period,
-                      budget.month,
-                      budget.year,
-                    );
+                    final existingList = budgetProvider.budgets.where((b) => 
+                      b.category == budget.category && 
+                      b.period == budget.period && 
+                      b.month == budget.month && 
+                      b.year == budget.year
+                    ).toList();
 
-                    if (existing != null) {
+                    if (existingList.isNotEmpty) {
+                      final existing = existingList.first;
                       if (mounted) {
                         final update = await showDialog<bool>(
                           context: context,
@@ -251,13 +226,13 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
 
                         if (update == true) {
                           final updatedBudget = budget.copyWith(id: existing.id);
-                          await DatabaseHelper.instance.updateBudget(updatedBudget);
+                          await budgetProvider.saveBudget(updatedBudget);
                         } else {
                           return;
                         }
                       }
                     } else {
-                      await DatabaseHelper.instance.insertBudget(budget);
+                      await budgetProvider.saveBudget(budget);
                     }
                   }
 

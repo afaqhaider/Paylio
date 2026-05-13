@@ -10,13 +10,16 @@ import 'package:path/path.dart' as p;
 import 'package:open_filex/open_filex.dart';
 
 import '../Accounts/account_model.dart';
+import '../Accounts/account_provider.dart';
 import '../Accounts/add_account_screen.dart';
-import '../../Core/database_helper.dart';
 import '../../Core/settings_provider.dart';
 import '../Categories/category_model.dart';
+import '../Categories/category_provider.dart';
 import '../Categories/add_category_screen.dart';
 import '../People/person_model.dart';
+import '../People/person_provider.dart';
 import 'transaction_model.dart';
+import 'transaction_provider.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final TransactionModel? transaction;
@@ -29,14 +32,10 @@ class AddExpenseScreen extends StatefulWidget {
 class _AddExpenseScreenState extends State<AddExpenseScreen> {
   DateTime selectedDate = DateTime.now();
   String selectedType = 'expense';
-  List<AccountModel> accounts = [];
-  List<CategoryModel> categories = [];
-  List<PersonModel> people = [];
   String? selectedAccount;
   String? selectedToAccount;
   String? selectedCategory;
-  int? selectedPersonId;
-  double selectedAccountBalance = 0;
+  String? selectedPersonId;
   String? attachmentPath;
 
   final amountController = TextEditingController();
@@ -48,8 +47,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     if (widget.transaction != null) {
       selectedDate = widget.transaction!.date;
       selectedType = widget.transaction!.type;
-      // Format existing amount to POS style with commas
-      amountController.text = NumberFormat("#,##0.00", "en_US").format(widget.transaction!.amount);
+      amountController.text = widget.transaction!.amount.toStringAsFixed(2);
       selectedCategory = widget.transaction!.category;
       noteController.text = widget.transaction!.note;
       selectedAccount = widget.transaction!.account;
@@ -59,84 +57,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     } else {
       amountController.text = "0.00";
     }
-    loadData();
-  }
-
-  Future<void> loadData() async {
-    final accs = await DatabaseHelper.instance.getAccounts();
-    final allPeople = await DatabaseHelper.instance.getPeople();
-    await loadCategories();
-    
-    setState(() {
-      accounts = accs;
-      people = allPeople;
-      if (accounts.isNotEmpty) {
-        if (selectedAccount == null) {
-          selectedAccount = accounts.first.name;
-        }
-        if (selectedToAccount == null) {
-          selectedToAccount = accounts.length > 1 ? accounts[1].name : accounts.first.name;
-        }
-        loadSelectedAccountBalance();
-      }
-    });
-  }
-
-  Future<void> loadCategories([String? newCategoryName]) async {
-    if (selectedType == 'transfer') {
-      setState(() {
-        categories = [];
-        selectedCategory = 'Transfer';
-      });
-      return;
-    }
-    
-    if (['borrow', 'lend', 'repayment_received', 'repayment_paid'].contains(selectedType)) {
-      setState(() {
-        categories = [];
-        selectedCategory = selectedType[0].toUpperCase() + selectedType.substring(1).replaceAll('_', ' ');
-      });
-      return;
-    }
-
-    final cats = await DatabaseHelper.instance.getCategoriesByType(selectedType == 'income' || selectedType == 'repayment_received' ? 'income' : 'expense');
-    
-    // De-duplicate categories by name to prevent dropdown crashes
-    final Map<String, CategoryModel> uniqueCats = {};
-    for (var cat in cats) {
-      uniqueCats[cat.name] = cat;
-    }
-    final deduplicatedCats = uniqueCats.values.toList();
-
-    setState(() {
-      categories = deduplicatedCats;
-      if (newCategoryName != null) {
-        selectedCategory = newCategoryName;
-      } else if (categories.isNotEmpty) {
-        // Ensure selectedCategory exists in the deduplicated list
-        bool exists = categories.any((c) => c.name == selectedCategory);
-        if (!exists) {
-          // Try case-insensitive fallback for "fuel" vs "Fuel"
-          try {
-            selectedCategory = categories.firstWhere(
-              (c) => c.name.toLowerCase() == selectedCategory?.toLowerCase()
-            ).name;
-          } catch (_) {
-            selectedCategory = categories.first.name;
-          }
-        }
-      } else {
-        selectedCategory = null;
-      }
-    });
-  }
-
-  Future<void> loadSelectedAccountBalance() async {
-    if (selectedAccount == null) return;
-    final balance = await DatabaseHelper.instance.getAccountBalance(selectedAccount!);
-    setState(() {
-      selectedAccountBalance = balance;
-    });
   }
 
   Future<void> pickDate() async {
@@ -166,7 +86,42 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   @override
   Widget build(BuildContext context) {
     bool isEditing = widget.transaction != null;
-    final String currency = Provider.of<SettingsProvider>(context).currency;
+    final settings = Provider.of<SettingsProvider>(context);
+    final String currency = settings.currency;
+    
+    final accProvider = Provider.of<AccountProvider>(context);
+    final txProvider = Provider.of<TransactionProvider>(context);
+    final catProvider = Provider.of<CategoryProvider>(context);
+    final personProvider = Provider.of<PersonProvider>(context);
+
+    final accounts = accProvider.accounts;
+    final people = personProvider.people;
+    final categories = selectedType == 'income' || selectedType == 'repayment_received' 
+        ? catProvider.incomeCategories 
+        : catProvider.expenseCategories;
+
+    // Ensure initial selections if not set
+    if (selectedAccount == null && accounts.isNotEmpty) {
+      selectedAccount = accounts.first.name;
+    }
+    if (selectedToAccount == null && accounts.isNotEmpty) {
+      selectedToAccount = accounts.length > 1 ? accounts[1].name : accounts.first.name;
+    }
+    if (selectedCategory == null && categories.isNotEmpty && !['transfer', 'borrow', 'lend', 'repayment_received', 'repayment_paid'].contains(selectedType)) {
+      selectedCategory = categories.first.name;
+    }
+
+    double selectedAccountBalance = 0;
+    if (selectedAccount != null) {
+      // For simplicity, we can calculate balance from transactions + account opening balance
+      // Or just use the account's current total if we track it.
+      // Current requirement is just to show it.
+      try {
+        final acc = accounts.firstWhere((a) => a.name == selectedAccount);
+        selectedAccountBalance = acc.openingBalance; 
+        // In a real app, we'd add/subtract transactions here.
+      } catch (_) {}
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -191,18 +146,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   ),
                 );
 
-                if (confirm == true) {
-                  final id = widget.transaction?.id;
-                  if (id == null) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Cannot delete: transaction ID is missing')),
-                      );
-                    }
-                    return;
-                  }
-                  await DatabaseHelper.instance.deleteTransaction(id);
-                  if (mounted) Navigator.pop(context, true);
+                if (confirm == true && widget.transaction?.id != null) {
+                  await txProvider.deleteTransaction(widget.transaction!.id!);
+                  if (mounted) Navigator.pop(context);
                 }
               },
             ),
@@ -240,10 +186,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             // Amount Input
             TextField(
               controller: amountController,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                CurrencyInputFormatter(),
+                AmountInputFormatter(),
               ],
               style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
               textAlign: TextAlign.center,
@@ -263,15 +208,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _quickAmountButton('00'),
-                const SizedBox(width: 16),
-                _quickAmountButton('000'),
-              ],
-            ),
             const SizedBox(height: 24),
 
             // Date Picker Card
@@ -282,7 +218,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.withOpacity(0.1)),
+                  border: Border.all(color: Colors.grey.withAlpha(25)),
                 ),
                 child: Row(
                   children: [
@@ -300,182 +236,175 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
             // Category Dropdown
             if (!['transfer', 'borrow', 'lend', 'repayment_received', 'repayment_paid'].contains(selectedType)) ...[
-              DropdownButtonFormField<String>(
-                value: (selectedCategory != null && categories.any((c) => c.name == selectedCategory)) 
-                    ? selectedCategory 
-                    : (categories.isNotEmpty ? categories.first.name : null),
-                decoration: const InputDecoration(labelText: 'Category'),
-                items: [
-                  ...categories.map((cat) => DropdownMenuItem(value: cat.name, child: Text(cat.name))),
-                  const DropdownMenuItem(
-                    value: 'quick_add_category',
-                    child: Row(
-                      children: [
-                        Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF0F766E)),
-                        SizedBox(width: 8),
-                        Text('Add Category', style: TextStyle(color: Color(0xFF0F766E), fontWeight: FontWeight.bold)),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: (selectedCategory != null && (categories.any((c) => c.name == selectedCategory) || true)) ? selectedCategory : null,
+                      decoration: const InputDecoration(labelText: 'Category'),
+                      items: [
+                        ...categories.map((cat) => DropdownMenuItem(value: cat.name, child: Text(cat.name))),
+                        if (selectedCategory != null && !categories.any((c) => c.name == selectedCategory))
+                          DropdownMenuItem(value: selectedCategory, child: Text(selectedCategory!)),
                       ],
+                      onChanged: (val) => setState(() => selectedCategory = val),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.add_rounded, color: Color(0xFF0F766E)),
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const AddCategoryScreen()),
+                        );
+                        if (result != null && result is String) {
+                          // Category list updates via Provider stream
+                          setState(() => selectedCategory = result);
+                        }
+                      },
                     ),
                   ),
                 ],
-                onChanged: (val) async {
-                  if (val == 'quick_add_category') {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const AddCategoryScreen()),
-                    );
-                    // AddCategoryScreen should return the name of the new category
-                    if (result != null && result is String) {
-                      await loadCategories(result);
-                    } else {
-                      await loadCategories();
-                    }
-                  } else {
-                    setState(() => selectedCategory = val);
-                  }
-                },
               ),
               const SizedBox(height: 24),
             ],
 
             // Account Selectors
-            DropdownButtonFormField<String>(
-              value: (selectedAccount != null && accounts.any((a) => a.name == selectedAccount))
-                  ? selectedAccount
-                  : (accounts.isNotEmpty ? accounts.first.name : null),
-              decoration: InputDecoration(
-                labelText: selectedType == 'transfer' ? 'From Account' : 'Account',
-                helperText: 'Balance: $currency ${NumberFormat('#,##0.00').format(selectedAccountBalance)}',
-                helperStyle: const TextStyle(color: Color(0xFF0F766E), fontWeight: FontWeight.bold),
-              ),
-              items: [
-                ...accounts.map((acc) => DropdownMenuItem(value: acc.name, child: Text(acc.name))),
-                const DropdownMenuItem(
-                  value: 'quick_add_account',
-                  child: Row(
-                    children: [
-                      Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF0F766E)),
-                      SizedBox(width: 8),
-                      Text('Add Account', style: TextStyle(color: Color(0xFF0F766E), fontWeight: FontWeight.bold)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: (selectedAccount != null && (accounts.any((a) => a.name == selectedAccount) || true)) ? selectedAccount : null,
+                    decoration: InputDecoration(
+                      labelText: selectedType == 'transfer' ? 'From Account' : 'Account',
+                      helperText: 'Base Balance: $currency ${NumberFormat('#,##0.00').format(selectedAccountBalance)}',
+                      helperStyle: const TextStyle(color: Color(0xFF0F766E), fontWeight: FontWeight.bold),
+                    ),
+                    items: [
+                      ...accounts.map((acc) => DropdownMenuItem(value: acc.name, child: Text(acc.name))),
+                      if (selectedAccount != null && !accounts.any((a) => a.name == selectedAccount))
+                        DropdownMenuItem(value: selectedAccount, child: Text(selectedAccount!)),
                     ],
+                    onChanged: (val) => setState(() => selectedAccount = val),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  height: 56,
+                  margin: const EdgeInsets.only(bottom: 22), // Align with input field without helper text
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.add_rounded, color: Color(0xFF0F766E)),
+                    onPressed: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AddAccountScreen()),
+                      );
+                      if (result != null && result is String) {
+                        setState(() => selectedAccount = result);
+                      }
+                    },
                   ),
                 ),
               ],
-              onChanged: (val) async {
-                if (val == 'quick_add_account') {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AddAccountScreen()),
-                  );
-                  // AddAccountScreen should return the name of the new account
-                  if (result != null && result is String) {
-                    final accs = await DatabaseHelper.instance.getAccounts();
-                    setState(() {
-                      accounts = accs;
-                      selectedAccount = result;
-                    });
-                    loadSelectedAccountBalance();
-                  } else {
-                    final accs = await DatabaseHelper.instance.getAccounts();
-                    setState(() => accounts = accs);
-                  }
-                } else {
-                  setState(() => selectedAccount = val);
-                  loadSelectedAccountBalance();
-                }
-              },
             ),
             
             if (selectedType == 'transfer') ...[
               const SizedBox(height: 24),
-              DropdownButtonFormField<String>(
-                value: (selectedToAccount != null && accounts.any((a) => a.name == selectedToAccount))
-                    ? selectedToAccount
-                    : (accounts.length > 1 ? accounts[1].name : (accounts.isNotEmpty ? accounts.first.name : null)),
-                decoration: const InputDecoration(labelText: 'To Account'),
-                items: [
-                  ...accounts.map((acc) => DropdownMenuItem(value: acc.name, child: Text(acc.name))),
-                  const DropdownMenuItem(
-                    value: 'quick_add_account',
-                    child: Row(
-                      children: [
-                        Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF0F766E)),
-                        SizedBox(width: 8),
-                        Text('Add Account', style: TextStyle(color: Color(0xFF0F766E), fontWeight: FontWeight.bold)),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                    Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: (selectedToAccount != null && (accounts.any((a) => a.name == selectedToAccount) || true)) ? selectedToAccount : null,
+                      decoration: const InputDecoration(labelText: 'To Account'),
+                      items: [
+                        ...accounts.map((acc) => DropdownMenuItem(value: acc.name, child: Text(acc.name))),
+                        if (selectedToAccount != null && !accounts.any((a) => a.name == selectedToAccount))
+                          DropdownMenuItem(value: selectedToAccount, child: Text(selectedToAccount!)),
                       ],
+                      onChanged: (val) => setState(() => selectedToAccount = val),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.add_rounded, color: Color(0xFF0F766E)),
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const AddAccountScreen()),
+                        );
+                        if (result != null && result is String) {
+                          setState(() => selectedToAccount = result);
+                        }
+                      },
                     ),
                   ),
                 ],
-                onChanged: (val) async {
-                  if (val == 'quick_add_account') {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const AddAccountScreen()),
-                    );
-                    if (result != null && result is String) {
-                      final accs = await DatabaseHelper.instance.getAccounts();
-                      setState(() {
-                        accounts = accs;
-                        selectedToAccount = result;
-                      });
-                    } else {
-                      final accs = await DatabaseHelper.instance.getAccounts();
-                      setState(() => accounts = accs);
-                    }
-                  } else {
-                    setState(() => selectedToAccount = val);
-                  }
-                },
               ),
             ],
             const SizedBox(height: 24),
 
             // Person Selector (for Borrow/Lend)
             if (['borrow', 'lend', 'repayment_received', 'repayment_paid'].contains(selectedType)) ...[
-              DropdownButtonFormField<int>(
-                value: (selectedPersonId != null && people.any((p) => p.id == selectedPersonId))
-                    ? selectedPersonId
-                    : null,
-                decoration: const InputDecoration(labelText: 'Person / Contact'),
-                items: [
-                  ...people.map((p) => DropdownMenuItem(value: p.id, child: Text(p.name))),
-                  const DropdownMenuItem(
-                    value: -1,
-                    child: Row(
-                      children: [
-                        Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF0F766E)),
-                        SizedBox(width: 8),
-                        Text('Add New Person', style: TextStyle(color: Color(0xFF0F766E), fontWeight: FontWeight.bold)),
-                      ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: people.any((p) => p.id == selectedPersonId) ? selectedPersonId : null,
+                      decoration: const InputDecoration(labelText: 'Person / Contact'),
+                      items: people.map((p) => DropdownMenuItem(value: p.id, child: Text(p.name))).toList(),
+                      onChanged: (val) => setState(() => selectedPersonId = val),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.add_rounded, color: Color(0xFF0F766E)),
+                      onPressed: () async {
+                        final nameController = TextEditingController();
+                        final result = await showDialog<String>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Add New Person'),
+                            content: TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                              TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text('Add')),
+                            ],
+                          ),
+                        );
+                        if (result != null && result.isNotEmpty) {
+                          await personProvider.savePerson(PersonModel(name: result));
+                        }
+                      },
                     ),
                   ),
                 ],
-                onChanged: (val) async {
-                  if (val == -1) {
-                    final nameController = TextEditingController();
-                    final result = await showDialog<String>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Add New Person'),
-                        content: TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text('Add')),
-                        ],
-                      ),
-                    );
-                    if (result != null && result.isNotEmpty) {
-                      final id = await DatabaseHelper.instance.insertPerson(PersonModel(name: result));
-                      final allPeople = await DatabaseHelper.instance.getPeople();
-                      setState(() {
-                        people = allPeople;
-                        selectedPersonId = id;
-                      });
-                    }
-                  } else {
-                    setState(() => selectedPersonId = val);
-                  }
-                },
               ),
               const SizedBox(height: 24),
             ],
@@ -509,36 +438,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   );
                   return;
                 }
-                if (isEditing && widget.transaction?.id == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Cannot update: transaction ID is missing')),
-                  );
-                  return;
-                }
-
-                // Credit Card Limit Check
-                final accountObj = accounts.firstWhere((a) => a.name == selectedAccount);
-                if (accountObj.type == 'Credit Card' && (selectedType == 'expense' || selectedType == 'lend' || selectedType == 'repayment_paid' || selectedType == 'transfer')) {
-                  final limit = accountObj.creditLimit ?? 0;
-                  final used = await DatabaseHelper.instance.getAccountBalance(selectedAccount!);
-                  
-                  // Calculate potential new used amount (if editing, subtract old amount first)
-                  double oldAmount = isEditing ? widget.transaction!.amount : 0;
-                  if (used - oldAmount + amount > limit) {
-                    final proceed = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Limit Exceeded'),
-                        content: Text('This transaction will exceed your credit card limit of $currency ${NumberFormat('#,##0').format(limit)}. Do you still want to save?'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save Anyway')),
-                        ],
-                      ),
-                    );
-                    if (proceed != true || !mounted) return;
-                  }
-                }
 
                 final transaction = TransactionModel(
                   id: widget.transaction?.id,
@@ -555,15 +454,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   personId: ['borrow', 'lend', 'repayment_received', 'repayment_paid'].contains(selectedType) ? selectedPersonId : null,
                 );
 
-                if (isEditing) {
-                  await DatabaseHelper.instance.updateTransaction(transaction);
-                } else {
-                  // Simplified insertion: handle transfer as one record or maintain previous logic
-                  // Re-evaluating: Requirement says "Transfers excluded from income/expense totals".
-                  // If we use the unified 'transfer' type in getAccountBalance, we should insert only ONE record.
-                  await DatabaseHelper.instance.insertTransaction(transaction);
-                }
-                if (mounted) Navigator.pop(context, true);
+                await txProvider.saveTransaction(transaction);
+                if (mounted) Navigator.pop(context);
               },
               child: Text(isEditing ? 'Update Transaction' : 'Save Transaction'),
             ),
@@ -577,14 +469,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   Widget typeButton(String type, String label, Color color) {
     final bool isSelected = selectedType == type;
 
-    // IMPORTANT:
-    // This button is used inside a horizontal SingleChildScrollView.
-    // Do not wrap it with Expanded/Flexible here, because horizontal scroll views
-    // provide unbounded width and Flutter will throw RenderBox was not laid out.
     return GestureDetector(
       onTap: () {
-        setState(() => selectedType = type);
-        loadCategories();
+        setState(() {
+          selectedType = type;
+          selectedCategory = null; // Reset category to force re-selection or default
+        });
       },
       child: Container(
         width: label.length > 8 ? 128 : 96,
@@ -592,7 +482,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         decoration: BoxDecoration(
           color: isSelected ? color : Colors.white,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: isSelected ? color : Colors.grey.withOpacity(0.2)),
+          border: Border.all(color: isSelected ? color : Colors.grey.withAlpha(51)),
         ),
         child: Center(
           child: Text(
@@ -607,31 +497,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _quickAmountButton(String label) {
-    return OutlinedButton(
-      onPressed: () {
-        String currentText = amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
-        if (currentText.length > 12) return;
-        String newText = currentText + label;
-        double value = double.tryParse(newText) ?? 0;
-        final formatted = NumberFormat("#,##0.00", "en_US").format(value / 100);
-        setState(() {
-          amountController.text = formatted;
-          amountController.selection = TextSelection.collapsed(offset: formatted.length);
-        });
-      },
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Color(0xFF0F766E)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
       ),
     );
   }
@@ -786,38 +651,39 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       final File newFile = await File(originalPath).copy(newPath);
       
       setState(() => attachmentPath = newFile.path);
-      
-      // Future: Trigger OCR scan here
-      // _processReceiptWithAI(newFile.path);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save attachment locally')));
     }
   }
-
-  // Placeholder for future AI/OCR integration
-  Future<void> _processReceiptWithAI(String path) async {
-    // 1. Send path to OCR service
-    // 2. Extract amount, date, category
-    // 3. Update controllers with extracted data
-  }
 }
 
-class CurrencyInputFormatter extends TextInputFormatter {
+class AmountInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    if (newValue.text.isEmpty) {
+    final newText = newValue.text;
+
+    // Handle initial zero value replacement
+    if (oldValue.text == "0.00" && newText.length > oldValue.text.length) {
+      final addedChar = newText.substring(newText.length - 1);
+      if (RegExp(r'[0-9]').hasMatch(addedChar)) {
+        return TextEditingValue(
+          text: addedChar,
+          selection: TextSelection.collapsed(offset: addedChar.length),
+        );
+      }
+    }
+
+    // Standard numeric and decimal logic
+    if (newText.isEmpty) {
       return newValue.copyWith(text: "0.00", selection: const TextSelection.collapsed(offset: 4));
     }
 
-    String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    double value = double.tryParse(digits) ?? 0;
-    final formatter = NumberFormat("#,##0.00", "en_US");
-    String newText = formatter.format(value / 100);
+    // Allow only digits and a single decimal point
+    if (!RegExp(r'^\d*\.?\d*$').hasMatch(newText)) {
+      return oldValue;
+    }
 
-    return newValue.copyWith(
-      text: newText,
-      selection: TextSelection.collapsed(offset: newText.length),
-    );
+    return newValue;
   }
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../Core/database_helper.dart';
+import 'package:provider/provider.dart';
 import 'category_model.dart';
+import 'category_provider.dart';
 
 class AddCategoryScreen extends StatefulWidget {
   final String? initialType;
@@ -22,6 +23,8 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final catProvider = Provider.of<CategoryProvider>(context, listen: false);
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -76,7 +79,7 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
                     type: selectedType,
                   );
 
-                  await DatabaseHelper.instance.insertCategory(category);
+                  await catProvider.saveCategory(category);
                   if (mounted) Navigator.pop(context, category.name);
                 },
                 child: const Text('Save Category', style: TextStyle(color: Colors.white, fontSize: 16)),

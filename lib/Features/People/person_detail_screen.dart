@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../Core/database_helper.dart';
 import '../../Core/settings_provider.dart';
 import '../Transactions/transaction_model.dart';
+import '../Transactions/transaction_provider.dart';
 import '../Transactions/add_expense_screen.dart';
 import 'person_model.dart';
 
@@ -16,40 +16,45 @@ class PersonDetailScreen extends StatefulWidget {
 }
 
 class _PersonDetailScreenState extends State<PersonDetailScreen> {
-  List<TransactionModel> transactions = [];
-  Map<String, double> summary = {};
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    loadData();
-  }
-
-  Future<void> loadData() async {
-    setState(() => isLoading = true);
-    final allTxs = await DatabaseHelper.instance.getTransactions();
-    final personTxs = allTxs.where((t) => t.personId == widget.person.id).toList();
-    final s = await DatabaseHelper.instance.getPersonSummary(widget.person.id!);
+  Map<String, double> _calculatePersonSummary(String personId, List<TransactionModel> transactions) {
+    double lent = 0;
+    double borrowed = 0;
+    double repaidReceived = 0;
+    double repaidPaid = 0;
     
-    setState(() {
-      transactions = personTxs;
-      summary = s;
-      isLoading = false;
-    });
+    for (var tx in transactions) {
+      if (tx.personId == personId) {
+        if (tx.type == 'lend') lent += tx.amount;
+        else if (tx.type == 'borrow') borrowed += tx.amount;
+        else if (tx.type == 'repayment_received') repaidReceived += tx.amount;
+        else if (tx.type == 'repayment_paid') repaidPaid += tx.amount;
+      }
+    }
+    
+    return {
+      'lent': lent,
+      'borrowed': borrowed,
+      'repaidReceived': repaidReceived,
+      'repaidPaid': repaidPaid,
+      'netBalance': (lent - repaidReceived) - (borrowed - repaidPaid),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     final currency = Provider.of<SettingsProvider>(context).currency;
+    final txProvider = Provider.of<TransactionProvider>(context);
     final format = NumberFormat('#,##0.00');
+    
+    final personTxs = txProvider.transactions.where((t) => t.personId == widget.person.id).toList();
+    final summary = _calculatePersonSummary(widget.person.id ?? '', txProvider.transactions);
     final netBalance = summary['netBalance'] ?? 0;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.person.name),
       ),
-      body: isLoading
+      body: txProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
@@ -102,13 +107,13 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 ),
 
                 Expanded(
-                  child: transactions.isEmpty
+                  child: personTxs.isEmpty
                       ? const Center(child: Text('No transactions yet', style: TextStyle(color: Colors.grey)))
                       : ListView.builder(
                           padding: const EdgeInsets.only(bottom: 80),
-                          itemCount: transactions.length,
+                          itemCount: personTxs.length,
                           itemBuilder: (context, index) {
-                            final t = transactions[index];
+                            final t = personTxs[index];
                             return _transactionItem(t, currency, format);
                           },
                         ),
@@ -118,7 +123,6 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await Navigator.push(context, MaterialPageRoute(builder: (context) => const AddExpenseScreen()));
-          loadData();
         },
         child: const Icon(Icons.add),
       ),
@@ -150,7 +154,6 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
       child: ListTile(
         onTap: () async {
           await Navigator.push(context, MaterialPageRoute(builder: (context) => AddExpenseScreen(transaction: t)));
-          loadData();
         },
         leading: Container(
           width: 40, height: 40,

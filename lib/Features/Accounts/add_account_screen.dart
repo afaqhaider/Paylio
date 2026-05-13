@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../Core/database_helper.dart';
 import '../../Core/settings_provider.dart';
 import 'account_model.dart';
+import 'account_provider.dart';
 
 class AddAccountScreen extends StatefulWidget {
   final String? initialName;
@@ -20,6 +20,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   final limitController = TextEditingController(text: "0.00");
 
   String selectedType = 'Cash';
+  bool hasDirectDebit = false;
 
   final accountTypes = [
     'Cash',
@@ -109,6 +110,16 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
               ),
             ],
 
+            if (selectedType == 'Bank') ...[
+              const SizedBox(height: 10),
+              CheckboxListTile(
+                title: const Text('Has direct debit commitments'),
+                value: hasDirectDebit,
+                onChanged: (val) => setState(() => hasDirectDebit = val ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+            ],
+
             const SizedBox(height: 20),
 
             TextField(
@@ -157,19 +168,18 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                    return;
                  }
 
-              final newAccount = AccountModel(
-              name: nameController.text.trim(),
-              type: selectedType,
-              openingBalance:
-              double.tryParse(balanceController.text.replaceAll(',', '')) ?? 0,
-              creditLimit: selectedType == 'Credit Card' ? limit : null,
-  );
+                 final newAccount = AccountModel(
+                   name: nameController.text.trim(),
+                   type: selectedType,
+                   openingBalance: double.tryParse(balanceController.text.replaceAll(',', '')) ?? 0,
+                   creditLimit: selectedType == 'Credit Card' ? limit : null,
+                   hasDirectDebit: hasDirectDebit,
+                 );
 
-  await DatabaseHelper.instance
-      .insertAccount(newAccount);
+                 await Provider.of<AccountProvider>(context, listen: false).saveAccount(newAccount);
 
-  if (mounted) Navigator.pop(context, newAccount.name);
-},
+                 if (mounted) Navigator.pop(context, newAccount.name);
+               },
                 child: const Text('Save', style: TextStyle(color: Colors.white)),
               ),
             ),

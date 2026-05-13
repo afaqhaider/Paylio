@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class BudgetModel {
-  final int? id;
+  final String? id;
   final String category;
   final double amountLimit;
   final String period; // 'Monthly', 'Weekly'
@@ -31,7 +33,7 @@ class BudgetModel {
 
   factory BudgetModel.fromMap(Map<String, dynamic> map) {
     return BudgetModel(
-      id: map['id'] as int?,
+      id: map['id']?.toString(),
       category: map['category'] as String? ?? 'Uncategorized',
       amountLimit: (map['amountLimit'] as num?)?.toDouble() ?? 0.0,
       period: map['period'] as String? ?? 'Monthly',
@@ -40,8 +42,34 @@ class BudgetModel {
       notes: map['notes'] as String?,
     );
   }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'category': category,
+      'amountLimit': amountLimit,
+      'period': period,
+      'month': month,
+      'year': year,
+      'notes': notes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  factory BudgetModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return BudgetModel(
+      id: doc.id,
+      category: data['category'] ?? '',
+      amountLimit: (data['amountLimit'] as num?)?.toDouble() ?? 0.0,
+      period: data['period'] ?? 'Monthly',
+      month: data['month'] ?? 1,
+      year: data['year'] ?? 2024,
+      notes: data['notes'],
+    );
+  }
+
   BudgetModel copyWith({
-    int? id,
+    String? id,
     String? category,
     double? amountLimit,
     String? period,

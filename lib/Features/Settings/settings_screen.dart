@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:local_auth/local_auth.dart';
 import '../../Core/settings_provider.dart';
 import '../../Core/backup_service.dart';
 import '../Auth/auth_provider.dart' as paylio_auth;
 import '../Auth/edit_profile_screen.dart';
+import 'import_csv_screen.dart';
+import '../Commitments/commitments_screen.dart';
+import '../Accounts/accounts_screen.dart';
+import '../Categories/categories_screen.dart';
+import '../People/people_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isBackingUp = false;
+  final LocalAuthentication auth_local = LocalAuthentication();
 
   final List<String> currencies = const [
     'AED',
@@ -21,12 +28,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'EUR',
     'GBP',
     'INR',
+    'PKR',
     'SAR',
     'OMR',
     'KWD',
     'BHD',
     'QAR',
   ];
+
+  Future<void> _toggleBiometrics(bool value, SettingsProvider settings) async {
+    if (value) {
+      try {
+        final bool canAuthenticateWithBiometrics = await auth_local.canCheckBiometrics;
+        final bool canAuthenticate = canAuthenticateWithBiometrics || await auth_local.isDeviceSupported();
+        
+        if (!canAuthenticate) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Biometric authentication is not available on this device.')),
+            );
+          }
+          return;
+        }
+
+        final bool didAuthenticate = await auth_local.authenticate(
+          localizedReason: 'Please authenticate to enable biometric login',
+          options: const AuthenticationOptions(stickyAuth: true),
+        );
+
+        if (didAuthenticate) {
+          settings.setBiometricEnabled(true);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    } else {
+      settings.setBiometricEnabled(false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,12 +78,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final user = auth.user;
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text('Settings', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
       ),
       body: Stack(
         children: [
@@ -51,7 +91,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Text('Profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
               const SizedBox(height: 8),
               Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: ListTile(
@@ -86,12 +125,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              const Text('Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
+              const Text('Security & Preferences', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
               const SizedBox(height: 8),
               Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 child: Column(
                   children: [
+                    SwitchListTile(
+                      secondary: const Icon(Icons.fingerprint, color: Colors.teal),
+                      title: const Text('Biometric Lock'),
+                      subtitle: const Text('Require biometrics to open app'),
+                      value: settings.biometricEnabled,
+                      onChanged: (val) => _toggleBiometrics(val, settings),
+                    ),
+                    const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.palette_outlined, color: Colors.indigo),
                       title: const Text('Theme Preference'),
@@ -115,24 +161,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ListTile(
                       leading: const Icon(Icons.currency_exchange, color: Colors.blue),
                       title: const Text('Default Currency'),
-                      trailing: DropdownButton<String>(
-                        value: currencies.contains(settings.currency) ? settings.currency : currencies.first,
-                        underline: const SizedBox(),
-                        items: currencies.map((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          );
-                        }).toList(),
-                        onChanged: (String? newValue) {
-                          if (newValue != null) {
-                            settings.setCurrency(newValue);
-                            if (user != null) {
-                              auth.updateProfile(user.copyWith(preferredCurrency: newValue));
-                            }
-                          }
-                        },
+                      subtitle: settings.isFetchingRates ? const Text('Fetching live rates...', style: TextStyle(fontSize: 10)) : Text('Rates updated from live feed', style: TextStyle(fontSize: 10, color: Colors.green.shade700)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (settings.isFetchingRates)
+                            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                          DropdownButton<String>(
+                            value: currencies.contains(settings.currency) ? settings.currency : currencies.first,
+                            underline: const SizedBox(),
+                            items: currencies.map((String value) {
+                              return DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                settings.setCurrency(newValue);
+                                if (user != null) {
+                                  auth.updateProfile(user.copyWith(preferredCurrency: newValue));
+                                }
+                              }
+                            },
+                          ),
+                        ],
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (settings.rates.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, size: 12, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text('1 AED = ${settings.rates['PKR']?.toStringAsFixed(2)} PKR | ${settings.rates['USD']?.toStringAsFixed(4)} USD', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      const Spacer(),
+                      InkWell(
+                        onTap: () => settings.fetchLiveRates(),
+                        child: const Text('Refresh Rates', style: TextStyle(fontSize: 10, color: Color(0xFF0F766E), fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 24),
+
+              const Text('Setup', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
+              const SizedBox(height: 8),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF0F766E)),
+                      title: const Text('Accounts'),
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const AccountsScreen()));
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.category_outlined, color: Colors.blue),
+                      title: const Text('Categories'),
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const CategoriesScreen()));
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.people_outline, color: Colors.orange),
+                      title: const Text('People & Contacts'),
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const PeopleScreen()));
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.calendar_today_outlined, color: Colors.indigo),
+                      title: const Text('Fixed Commitments'),
+                      subtitle: const Text('Rent, EMIs, Bills'),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const CommitmentsScreen()),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -142,9 +258,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Text('Backup & Restore', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
               const SizedBox(height: 8),
               Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 child: Column(
                   children: [
+                    ListTile(
+                      leading: const Icon(Icons.table_rows_outlined, color: Colors.green),
+                      title: const Text('Import CSV'),
+                      subtitle: const Text('Import bank statements'),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ImportCsvScreen()),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.cloud_download_outlined, color: Color(0xFF0F766E)),
                       title: const Text('Download Full Backup'),
@@ -170,51 +297,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              const Text('Data Management', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
-              const SizedBox(height: 8),
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.file_upload_outlined, color: Colors.green),
-                      title: const Text('Import Data'),
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Use Upload / Restore Backup instead!')));
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.file_download_outlined, color: Colors.orange),
-                      title: const Text('Export Data'),
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Use Download Full Backup instead!')));
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.description_outlined, color: Colors.blue),
-                      title: const Text('Download Templates'),
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Download Templates coming soon!')));
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.settings_backup_restore, color: Colors.purple),
-                      title: const Text('Auto Backup Settings'),
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Auto Backup coming soon!')));
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
               const Text('App Info', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
               const SizedBox(height: 8),
               Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 child: Column(
                   children: [
                     ListTile(
