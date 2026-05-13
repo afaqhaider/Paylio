@@ -1,0 +1,13 @@
+# Task Management
+- [x] Fix Account Balance Update Issue
+- [x] Formatting Currency to Accounting Format
+- [x] Updating Amount Inputs to Numeric Only
+- [x] Implementing Transaction Editing
+- [x] Add Home Dashboard and Budgets Pages
+    - [x] Create `BudgetModel`
+    - [x] Update `DatabaseHelper` (Version 3)
+    - [x] Build `DashboardScreen`
+    - [x] Build `AddBudgetScreen`
+    - [x] Build `BudgetsScreen`
+    - [x] Update `HomeScreen` Navigation
+    - [x] Verify integration and navigation
