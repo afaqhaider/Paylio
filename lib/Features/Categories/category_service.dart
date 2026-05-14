@@ -8,7 +8,15 @@ class CategoryService extends CloudService {
         .where('type', isEqualTo: type)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => CategoryModel.fromFirestore(doc)).toList();
+      return snapshot.docs.map((doc) {
+        try {
+          return CategoryModel.fromFirestore(doc);
+        } catch (e, st) {
+          print('Bad category doc ${doc.id}: $e');
+          print(st);
+          return null;
+        }
+      }).whereType<CategoryModel>().toList();
     });
   }
 

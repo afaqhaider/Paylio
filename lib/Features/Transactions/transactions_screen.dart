@@ -10,6 +10,7 @@ import '../Categories/category_provider.dart';
 import '../People/person_model.dart';
 import '../People/person_provider.dart';
 import 'add_expense_screen.dart';
+import 'import_data_screen.dart';
 import 'transaction_model.dart';
 import 'transaction_provider.dart';
 
@@ -29,6 +30,54 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   String? filterType;
   String? filterCategory;
   String? filterPersonId;
+
+  // Selection State
+  Set<String> selectedIds = {};
+  bool get isSelectionMode => selectedIds.isNotEmpty;
+
+  void toggleSelection(String? id) {
+    if (id == null) return;
+    setState(() {
+      if (selectedIds.contains(id)) {
+        selectedIds.remove(id);
+      } else {
+        selectedIds.add(id);
+      }
+    });
+  }
+
+  void clearSelection() {
+    setState(() {
+      selectedIds.clear();
+    });
+  }
+
+  Future<void> bulkDelete(TransactionProvider provider) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Delete'),
+        content: Text('Are you sure you want to delete ${selectedIds.length} transactions?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      for (var id in selectedIds) {
+        await provider.deleteTransaction(id);
+      }
+      clearSelection();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transactions deleted')));
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -124,11 +173,37 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Activity'),
-        actions: [
+        leading: isSelectionMode 
+            ? IconButton(icon: const Icon(Icons.close), onPressed: clearSelection)
+            : null,
+        title: isSelectionMode 
+            ? Text('${selectedIds.length} Selected') 
+            : const Text('Activity'),
+        actions: isSelectionMode ? [
+          if (selectedIds.length == 1)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () async {
+                final id = selectedIds.first;
+                final tx = txProvider.transactions.firstWhere((t) => t.id == id);
+                await Navigator.push(context, MaterialPageRoute(builder: (context) => AddExpenseScreen(transaction: tx)));
+                clearSelection();
+              },
+            ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            onPressed: () {},
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => bulkDelete(txProvider),
+          ),
+        ] : [
+          IconButton(
+            icon: const Icon(Icons.file_upload_outlined, size: 22),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ImportDataScreen()),
+              );
+            },
+            tooltip: 'Import Data',
           ),
         ],
       ),
@@ -136,8 +211,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                summaryCard(totalIn, totalOut, currency),
-                filterBar(accProvider.accounts, catProvider.expenseCategories + catProvider.incomeCategories, personProvider.people),
+                if (!isSelectionMode) summaryCard(totalIn, totalOut, currency),
+                if (!isSelectionMode) filterBar(accProvider.accounts, catProvider.expenseCategories + catProvider.incomeCategories, personProvider.people),
                 Expanded(
                   child: filteredTransactions.isEmpty
                       ? const Center(child: Text('No transactions found', style: TextStyle(color: Colors.grey)))
@@ -152,13 +227,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             double dayIn = 0;
                             double dayOut = 0;
                             for (var t in txs) {
-                              if (['income', 'borrow', 'repayment_received'].contains(t.type)) dayIn += t.amount;
-                              else if (['expense', 'lend', 'repayment_paid'].contains(t.type)) dayOut += t.amount;
+                              if (['income', 'borrow', 'repayment_received'].contains(t.type)) {
+                                dayIn += t.amount;
+                              } else if (['expense', 'lend', 'repayment_paid'].contains(t.type)) {
+                                dayOut += t.amount;
+                              }
                             }
 
                             return Column(
                               children: [
-                                dateHeader(date, dayIn, dayOut, currency),
+                                if (!isSelectionMode)
+                                  dateHeader(date, dayIn, dayOut, currency),
                                 ...txs.map((t) => transactionItem(t, currency)),
                               ],
                             );
@@ -491,17 +570,31 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   t.type == 'borrow' ? Colors.brown :
                   const Color(0xFF7C3AED);
 
+    final isSelected = selectedIds.contains(t.id);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      elevation: isSelected ? 4 : 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: isSelected ? const Color(0xFF0F766E) : Colors.transparent, width: 2),
+      ),
       child: ListTile(
         onTap: () async {
-          await Navigator.push(context, MaterialPageRoute(builder: (context) => AddExpenseScreen(transaction: t)));
+          if (isSelectionMode) {
+            toggleSelection(t.id);
+          } else {
+            await Navigator.push(context, MaterialPageRoute(builder: (context) => AddExpenseScreen(transaction: t)));
+          }
         },
-        leading: Container(
-          width: 40, height: 40,
-          decoration: BoxDecoration(color: color.withAlpha(20), borderRadius: BorderRadius.circular(10)),
-          child: Icon(isIncome ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, color: color, size: 18),
-        ),
+        onLongPress: () => toggleSelection(t.id),
+        leading: isSelectionMode 
+            ? Icon(isSelected ? Icons.check_circle : Icons.radio_button_unchecked, color: isSelected ? const Color(0xFF0F766E) : Colors.grey)
+            : Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: color.withAlpha(20), borderRadius: BorderRadius.circular(10)),
+                child: Icon(isIncome ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, color: color, size: 18),
+              ),
         title: Row(
           children: [
             Expanded(child: Text(t.category, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
@@ -509,7 +602,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               const Icon(Icons.attachment_rounded, size: 14, color: Colors.grey),
           ],
         ),
-        subtitle: Text(t.account, style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t.account, style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+            if (isSelectionMode) Text(DateFormat('dd MMM yyyy').format(t.date), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          ],
+        ),
         trailing: Text(
           '${isIncome ? '+' : '-'} $currency ${NumberFormat('#,##0.00').format(t.amount)}',
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: color),

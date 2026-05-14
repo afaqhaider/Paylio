@@ -13,15 +13,21 @@ class SettingsProvider with ChangeNotifier {
   bool _biometricEnabled = false;
   Map<String, double> _rates = {'AED': 1.0, 'USD': 0.27, 'PKR': 75.0, 'INR': 22.0};
   bool _isFetchingRates = false;
+  bool _isLoaded = false;
 
   String get currency => _currency;
   bool get biometricEnabled => _biometricEnabled;
   Map<String, double> get rates => _rates;
   bool get isFetchingRates => _isFetchingRates;
+  bool get isLoaded => _isLoaded;
 
   SettingsProvider() {
-    _loadSettings();
-    fetchLiveRates();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadSettings();
+    await fetchLiveRates();
   }
 
   Future<void> _loadSettings() async {
@@ -42,6 +48,7 @@ class SettingsProvider with ChangeNotifier {
         debugPrint("SettingsProvider: Failed to load from Firestore: $e");
       }
     }
+    _isLoaded = true;
     notifyListeners();
   }
 

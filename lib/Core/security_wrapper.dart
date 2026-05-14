@@ -19,7 +19,11 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _checkBiometrics();
+    // Use a post-frame callback to ensure context is fully available if needed,
+    // though for checking biometrics we can start immediately or wait for provider.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkBiometrics();
+    });
   }
 
   @override
@@ -30,36 +34,47 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint("AppLifecycleState changed to: $state");
     if (state == AppLifecycleState.paused) {
       setState(() {
         _isAuthenticated = false;
       });
-    } else if (state == AppLifecycleState.resumed || state == AppLifecycleState.inactive) {
-      // Inactive is often used on iOS when the app switcher is opened
+    } else if (state == AppLifecycleState.resumed) {
       _checkBiometrics();
     }
   }
 
   Future<void> _checkBiometrics() async {
+    if (!mounted) return;
+    
     final settings = Provider.of<SettingsProvider>(context, listen: false);
+    
+    // Wait for settings to be loaded if they aren't yet
+    if (!settings.isLoaded) {
+      debugPrint("SecurityWrapper: Settings not loaded, waiting...");
+      // We can't easily "wait" here without a loop or a listener, 
+      // but usually settings load very fast.
+      // Let's rely on didUpdateWidget or just re-check if settings changed.
+      return;
+    }
+
     if (!settings.biometricEnabled) {
-      if (mounted) {
-        setState(() {
-          _isAuthenticated = true;
-        });
-      }
+      debugPrint("SecurityWrapper: Biometrics disabled in settings.");
+      setState(() {
+        _isAuthenticated = true;
+      });
       return;
     }
 
     if (_isAuthenticated || _isAuthenticating) return;
 
-    if (mounted) {
-      setState(() {
-        _isAuthenticating = true;
-      });
-    }
+    setState(() {
+      _isAuthenticating = true;
+    });
 
+    debugPrint("SecurityWrapper: Triggering Biometric Authentication");
     final success = await BiometricService.authenticate();
+    debugPrint("SecurityWrapper: Authentication result: $success");
 
     if (mounted) {
       setState(() {
@@ -71,6 +86,13 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
+    // Re-check if settings just loaded and we aren't authenticated yet
+    final settings = Provider.of<SettingsProvider>(context);
+    if (settings.isLoaded && !_isAuthenticated && !_isAuthenticating) {
+      // Trigger check in next frame to avoid setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkBiometrics());
+    }
+
     if (_isAuthenticated) {
       return widget.child;
     }
@@ -94,14 +116,17 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 48),
-            ElevatedButton.icon(
-              onPressed: _checkBiometrics,
-              icon: const Icon(Icons.fingerprint),
-              label: const Text('Unlock with Biometrics'),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(200, 50),
-              ),
-            ),
+            if (settings.isLoaded)
+              ElevatedButton.icon(
+                onPressed: _checkBiometrics,
+                icon: const Icon(Icons.fingerprint),
+                label: const Text('Unlock with Biometrics'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(200, 50),
+                ),
+              )
+            else
+              const CircularProgressIndicator(),
           ],
         ),
       ),

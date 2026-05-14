@@ -59,12 +59,12 @@ class BudgetModel {
     final data = doc.data() as Map<String, dynamic>;
     return BudgetModel(
       id: doc.id,
-      category: data['category'] ?? '',
+      category: data['category']?.toString() ?? '',
       amountLimit: (data['amountLimit'] as num?)?.toDouble() ?? 0.0,
-      period: data['period'] ?? 'Monthly',
-      month: data['month'] ?? 1,
-      year: data['year'] ?? 2024,
-      notes: data['notes'],
+      period: data['period']?.toString() ?? 'Monthly',
+      month: (data['month'] as num?)?.toInt() ?? 1,
+      year: (data['year'] as num?)?.toInt() ?? 2024,
+      notes: data['notes']?.toString(),
     );
   }
 

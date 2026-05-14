@@ -5,7 +5,15 @@ import 'budget_model.dart';
 class BudgetService extends CloudService {
   Stream<List<BudgetModel>> streamBudgets() {
     return stream('budgets').map((snapshot) {
-      return snapshot.docs.map((doc) => BudgetModel.fromFirestore(doc)).toList();
+      return snapshot.docs.map((doc) {
+        try {
+          return BudgetModel.fromFirestore(doc);
+        } catch (e, st) {
+          print('Bad budget doc ${doc.id}: $e');
+          print(st);
+          return null;
+        }
+      }).whereType<BudgetModel>().toList();
     });
   }
 

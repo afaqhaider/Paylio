@@ -54,11 +54,11 @@ class PersonModel {
     final data = doc.data() as Map<String, dynamic>;
     return PersonModel(
       id: doc.id,
-      paylioId: data['paylioId'],
-      name: data['name'] ?? '',
-      email: data['email'],
-      phone: data['phone'],
-      notes: data['notes'],
+      paylioId: data['paylioId']?.toString(),
+      name: data['name']?.toString() ?? '',
+      email: data['email']?.toString(),
+      phone: data['phone']?.toString(),
+      notes: data['notes']?.toString(),
     );
   }
 }

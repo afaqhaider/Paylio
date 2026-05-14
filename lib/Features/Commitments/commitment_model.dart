@@ -96,13 +96,16 @@ class CommitmentModel {
       frequency: map['frequency'],
       reminderDays: map['reminderDays'] ?? 3,
       notes: map['notes'],
-      attachments: List<String>.from(map['attachments'] ?? []),
+      attachments: (map['attachments'] as List?)?.map((e) => e.toString()).toList() ?? [],
       status: map['status'] ?? 'Upcoming',
       nextDueDate: map['nextDueDate'] != null ? DateTime.parse(map['nextDueDate']) : null,
       propertyName: map['propertyName'],
       landlordName: map['landlordName'],
       numberOfCheques: map['numberOfCheques'],
-      rentCheques: map['rentCheques'] != null ? List<Map<String, dynamic>>.from(map['rentCheques']) : null,
+      rentCheques: (map['rentCheques'] as List?)
+          ?.whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(),
       providerName: map['providerName'],
       accountNumber: map['accountNumber'],
       bankName: map['bankName'],
@@ -111,6 +114,19 @@ class CommitmentModel {
       endDate: map['endDate'] != null ? DateTime.parse(map['endDate']) : null,
       autoDebit: map['autoDebit'] ?? false,
     );
+  }
+
+  static DateTime parseDate(dynamic value, {DateTime? fallback}) {
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.tryParse(value) ?? fallback ?? DateTime.now();
+    return fallback ?? DateTime.now();
+  }
+
+  static DateTime? parseOptionalDate(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   Map<String, dynamic> toFirestore() {
@@ -128,28 +144,31 @@ class CommitmentModel {
     final data = doc.data() as Map<String, dynamic>;
     return CommitmentModel(
       id: doc.id,
-      name: data['name'] ?? '',
-      type: data['type'] ?? '',
+      name: data['name']?.toString() ?? '',
+      type: data['type']?.toString() ?? '',
       amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
-      linkedAccount: data['linkedAccount'] ?? '',
-      dueDate: (data['dueDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      frequency: data['frequency'] ?? 'Monthly',
+      linkedAccount: data['linkedAccount']?.toString() ?? '',
+      dueDate: parseDate(data['dueDate']),
+      frequency: data['frequency']?.toString() ?? 'Monthly',
       reminderDays: data['reminderDays'] ?? 3,
-      notes: data['notes'],
-      attachments: List<String>.from(data['attachments'] ?? []),
-      status: data['status'] ?? 'Upcoming',
-      nextDueDate: (data['nextDueDate'] as Timestamp?)?.toDate(),
-      propertyName: data['propertyName'],
-      landlordName: data['landlordName'],
-      numberOfCheques: data['numberOfCheques'],
-      rentCheques: data['rentCheques'] != null ? List<Map<String, dynamic>>.from(data['rentCheques']) : null,
-      providerName: data['providerName'],
-      accountNumber: data['accountNumber'],
-      bankName: data['bankName'],
-      originalLoanAmount: data['originalLoanAmount'] != null ? (data['originalLoanAmount'] as num).toDouble() : null,
-      startDate: (data['startDate'] as Timestamp?)?.toDate(),
-      endDate: (data['endDate'] as Timestamp?)?.toDate(),
-      autoDebit: data['autoDebit'] ?? false,
+      notes: data['notes']?.toString(),
+      attachments: (data['attachments'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      status: data['status']?.toString() ?? 'Upcoming',
+      nextDueDate: parseOptionalDate(data['nextDueDate']),
+      propertyName: data['propertyName']?.toString(),
+      landlordName: data['landlordName']?.toString(),
+      numberOfCheques: data['numberOfCheques'] as int?,
+      rentCheques: (data['rentCheques'] as List?)
+          ?.whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(),
+      providerName: data['providerName']?.toString(),
+      accountNumber: data['accountNumber']?.toString(),
+      bankName: data['bankName']?.toString(),
+      originalLoanAmount: (data['originalLoanAmount'] as num?)?.toDouble(),
+      startDate: parseOptionalDate(data['startDate']),
+      endDate: parseOptionalDate(data['endDate']),
+      autoDebit: data['autoDebit'] == true,
     );
   }
 

@@ -9,7 +9,15 @@ class TransactionService extends CloudService {
       query = query.limit(limit);
     }
     return query.snapshots().map((snapshot) {
-      return snapshot.docs.map((doc) => TransactionModel.fromFirestore(doc)).toList();
+      return snapshot.docs.map((doc) {
+        try {
+          return TransactionModel.fromFirestore(doc);
+        } catch (e, st) {
+          print('Bad transaction doc ${doc.id}: $e');
+          print(st);
+          return null;
+        }
+      }).whereType<TransactionModel>().toList();
     });
   }
 

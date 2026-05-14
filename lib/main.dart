@@ -12,14 +12,22 @@ import 'Features/People/person_provider.dart';
 import 'Features/Commitments/commitment_provider.dart';
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Global Error Handling
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint("Flutter Error: ${details.exception}");
+    debugPrintStack(stackTrace: details.stack);
+  };
+
   try {
-    WidgetsFlutterBinding.ensureInitialized();
-    
     // Initialize Firebase and await it to prevent [core/no-app] error
     await Firebase.initializeApp();
     debugPrint("Firebase initialized successfully");
   } catch (e) {
     debugPrint("Firebase initialization failed: $e");
+    // If Firebase fails, we still want to see the error in the app if possible
   }
 
   runApp(

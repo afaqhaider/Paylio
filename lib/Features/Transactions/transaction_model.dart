@@ -55,6 +55,12 @@ class TransactionModel {
     );
   }
 
+  static DateTime parseDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+    return DateTime.now();
+  }
+
   Map<String, dynamic> toFirestore() {
     return {
       'type': type,
@@ -74,15 +80,15 @@ class TransactionModel {
     final data = doc.data() as Map<String, dynamic>;
     return TransactionModel(
       id: doc.id,
-      type: data['type'] ?? '',
-      category: data['category'] ?? '',
-      account: data['account'] ?? '',
-      toAccount: data['toAccount'],
-      note: data['note'] ?? '',
+      type: data['type']?.toString() ?? '',
+      category: data['category']?.toString() ?? '',
+      account: data['account']?.toString() ?? '',
+      toAccount: data['toAccount']?.toString(),
+      note: data['note']?.toString() ?? '',
       amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
-      date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      attachmentPath: data['attachmentPath'],
-      personId: data['personId'],
+      date: parseDate(data['date']),
+      attachmentPath: data['attachmentPath']?.toString(),
+      personId: data['personId']?.toString(),
     );
   }
 

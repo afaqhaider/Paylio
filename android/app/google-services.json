@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:630966899506:android:aa14210c25334431f13d2b",
+        "mobilesdk_app_id": "1:630966899506:android:d784a924c25d3b03f13d2b",
         "android_client_info": {
-          "package_name": "com.example.paylio"
+          "package_name": "com.afaq.paylio"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "630966899506-0gkgcgvhbbeq1qdank5q21c58ecl4jfn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBIwwfkhF6F-8yQW2iPkVOv14hyQEG3dW0"
@@ -20,7 +25,55 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "630966899506-0gkgcgvhbbeq1qdank5q21c58ecl4jfn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "630966899506-co7k4ltec1ll21cfkvg6vkeqbdvgameh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.afaq.paylio"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:630966899506:android:aa14210c25334431f13d2b",
+        "android_client_info": {
+          "package_name": "com.example.paylio"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "630966899506-0gkgcgvhbbeq1qdank5q21c58ecl4jfn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIwwfkhF6F-8yQW2iPkVOv14hyQEG3dW0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "630966899506-0gkgcgvhbbeq1qdank5q21c58ecl4jfn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "630966899506-co7k4ltec1ll21cfkvg6vkeqbdvgameh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.afaq.paylio"
+              }
+            }
+          ]
         }
       }
     }

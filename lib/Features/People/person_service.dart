@@ -5,7 +5,15 @@ import 'person_model.dart';
 class PersonService extends CloudService {
   Stream<List<PersonModel>> streamPeople() {
     return stream('people').map((snapshot) {
-      return snapshot.docs.map((doc) => PersonModel.fromFirestore(doc)).toList();
+      return snapshot.docs.map((doc) {
+        try {
+          return PersonModel.fromFirestore(doc);
+        } catch (e, st) {
+          print('Bad person doc ${doc.id}: $e');
+          print(st);
+          return null;
+        }
+      }).whereType<PersonModel>().toList();
     });
   }
 

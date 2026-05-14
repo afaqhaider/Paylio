@@ -5,7 +5,15 @@ import 'commitment_model.dart';
 class CommitmentService extends CloudService {
   Stream<List<CommitmentModel>> streamCommitments() {
     return stream('commitments').map((snapshot) {
-      return snapshot.docs.map((doc) => CommitmentModel.fromFirestore(doc)).toList();
+      return snapshot.docs.map((doc) {
+        try {
+          return CommitmentModel.fromFirestore(doc);
+        } catch (e, st) {
+          print('Bad commitment doc ${doc.id}: $e');
+          print(st);
+          return null;
+        }
+      }).whereType<CommitmentModel>().toList();
     });
   }
 

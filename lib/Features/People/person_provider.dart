@@ -18,6 +18,8 @@ class PersonProvider extends ChangeNotifier {
     _subscription = _service.streamPeople().listen((people) {
       _people = people;
       notifyListeners();
+    }, onError: (e) {
+      debugPrint("PersonProvider Error: $e");
     });
   }
 
