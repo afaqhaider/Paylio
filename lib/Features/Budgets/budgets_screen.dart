@@ -6,6 +6,8 @@ import '../Transactions/transaction_provider.dart';
 import 'budget_model.dart';
 import 'budget_provider.dart';
 import 'add_budget_screen.dart';
+import 'budget_details_screen.dart';
+import '../../shared/widgets/app_fab.dart';
 
 class BudgetsScreen extends StatefulWidget {
   const BudgetsScreen({super.key});
@@ -28,6 +30,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     }
 
     return txProvider.transactions.where((t) {
+      if (t.status != 'confirmed' && t.status != 'approved') return false;
+      if (t.type != 'expense') return false; // Budgets should only count normal expenses
+
       return t.category == budget.category &&
              t.date.isAfter(start.subtract(const Duration(seconds: 1))) &&
              t.date.isBefore(end.add(const Duration(seconds: 1)));
@@ -47,6 +52,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.menu_rounded, size: 28),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
         title: const Text('Budgets'),
       ),
       body: RefreshIndicator(
@@ -82,37 +91,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(16),
                           onTap: () async {
-                            await Navigator.push(context, MaterialPageRoute(builder: (context) => AddBudgetScreen(budget: budget)));
+                            await Navigator.push(context, MaterialPageRoute(builder: (context) => BudgetDetailsScreen(budget: budget)));
                           },
                           onLongPress: () async {
-                            showModalBottomSheet(
-                              context: context,
-                              builder: (context) => SafeArea(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ListTile(
-                                      leading: const Icon(Icons.edit_outlined),
-                                      title: const Text('Edit Budget'),
-                                      onTap: () async {
-                                        Navigator.pop(context);
-                                        await Navigator.push(context, MaterialPageRoute(builder: (context) => AddBudgetScreen(budget: budget)));
-                                      },
-                                    ),
-                                    ListTile(
-                                      leading: const Icon(Icons.delete_outline, color: Color(0xFFDC2626)),
-                                      title: const Text('Delete Budget', style: TextStyle(color: Color(0xFFDC2626))),
-                                      onTap: () async {
-                                        Navigator.pop(context);
-                                        if (budget.id != null) {
-                                          await budgetProvider.deleteBudget(budget.id!);
-                                        }
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
+                            await Navigator.push(context, MaterialPageRoute(builder: (context) => AddBudgetScreen(budget: budget)));
                           },
                           child: Padding(
                             padding: const EdgeInsets.all(20),
@@ -189,13 +171,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                       );
                     },
                   ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'budgetsFab',
-        onPressed: () async {
-          await Navigator.push(context, MaterialPageRoute(builder: (context) => const AddBudgetScreen()));
-        },
-        child: const Icon(Icons.add),
       ),
     );
   }

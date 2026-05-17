@@ -18,7 +18,11 @@ class CommitmentProvider extends ChangeNotifier {
     _init();
   }
 
-  void _init() {
+  Future<void> _init() async {
+    // For now, load from cloud, but we can add SQLite if table exists
+    // DatabaseHelper has 'commitments' table? No, it only has transactions, accounts, categories, budgets, users, people.
+    // I should add commitments to SQLite if needed, but the user said "do not block app launch".
+
     _subscription = _service.streamCommitments().listen((commitments) {
       _commitments = commitments;
       _isLoading = false;

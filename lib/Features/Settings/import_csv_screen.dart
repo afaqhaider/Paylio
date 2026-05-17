@@ -5,8 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../Transactions/transaction_model.dart';
 import '../Transactions/transaction_provider.dart';
 import '../Accounts/account_provider.dart';
@@ -333,7 +331,7 @@ class _ImportCsvScreenState extends State<ImportCsvScreen> {
     if (amountStr.isEmpty) return 0;
     String clean = amountStr.replaceAll(RegExp(r'[^\d.\-()]'), '').trim();
     if (clean.startsWith('(') && clean.endsWith(')')) {
-      clean = '-' + clean.substring(1, clean.length - 1);
+      clean = '-${clean.substring(1, clean.length - 1)}';
     }
     return double.tryParse(clean) ?? 0;
   }
@@ -426,7 +424,7 @@ class _ImportCsvScreenState extends State<ImportCsvScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Target Account',
                   ),
-                  value: _targetAccount,
+                  initialValue: _targetAccount,
                   items: accProvider.accounts.map((acc) {
                     return DropdownMenuItem(
                       value: acc,

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'auth_provider.dart' as paylio_auth;
+import 'auth_provider.dart' as ledgix_auth;
 import 'signup_screen.dart';
+import '../../shared/widgets/app_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,7 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<paylio_auth.PaylioAuthProvider>(context);
+    final auth = Provider.of<ledgix_auth.LedGixAuthProvider>(context);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -30,20 +31,24 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(
-                  child: Image.asset(
-                    'assets/logo/paylio_logo.png',
-                    height: 80,
+                  child: Hero(
+                    tag: 'logo',
+                    child: Image.asset(
+                      'assets/logo/ledgix_logo.png',
+                      height: 100,
+                      errorBuilder: (c,e,s) => const Icon(Icons.account_balance_wallet_rounded, size: 80, color: Color(0xFF218BFF)),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
                 Text(
-                  'Welcome Back!',
-                  style: theme.textTheme.headlineMedium,
+                  'LEDGIX',
+                  style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 2),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Log in to sync your finances',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                  'Access your financial operating system',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 48),
                 TextFormField(
@@ -74,24 +79,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                 ),
                 const SizedBox(height: 40),
-                auth.isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ElevatedButton(
-                        onPressed: () async {
-                          if (_formKey.currentState!.validate()) {
-                            final error = await auth.login(
-                              _emailController.text.trim(),
-                              _passwordController.text,
-                            );
-                            if (error != null && mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(error), backgroundColor: Colors.red),
-                              );
-                            }
-                          }
-                        },
-                        child: const Text('Login'),
-                      ),
+                AppButton(
+                  label: 'Login',
+                  isLoading: auth.isLoading,
+                  onPressed: () async {
+                    if (_formKey.currentState!.validate()) {
+                      final error = await auth.login(
+                        _emailController.text.trim(),
+                        _passwordController.text,
+                      );
+                      if (error != null && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(error), backgroundColor: Colors.red),
+                        );
+                      }
+                    }
+                  },
+                ),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

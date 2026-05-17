@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'category_model.dart';
 import 'category_provider.dart';
 import 'add_category_screen.dart';
+import '../../shared/widgets/app_fab.dart';
 
 class CategoriesScreen extends StatefulWidget {
   const CategoriesScreen({super.key});
@@ -46,15 +47,21 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             categoryList(catProvider.incomeCategories, const Color(0xFF10B981)),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
-          heroTag: 'categoriesFab',
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        floatingActionButton: AppFab(
           onPressed: () async {
             await Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const AddCategoryScreen()),
             );
           },
-          child: const Icon(Icons.add),
+        ),
+        bottomNavigationBar: BottomAppBar(
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8.0,
+          height: 60,
+          color: Theme.of(context).colorScheme.surface,
+          child: Container(),
         ),
       ),
     );

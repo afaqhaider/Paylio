@@ -15,7 +15,7 @@ class BiometricService {
   static Future<bool> authenticate() async {
     try {
       return await _auth.authenticate(
-        localizedReason: 'Please authenticate to access Paylio',
+        localizedReason: 'Please authenticate to access LedGix',
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: false,

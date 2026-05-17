@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'auth_provider.dart' as paylio_auth;
+import 'auth_provider.dart' as ledgix_auth;
+import '../../shared/widgets/app_button.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -18,7 +19,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<paylio_auth.PaylioAuthProvider>(context);
+    final auth = Provider.of<ledgix_auth.LedGixAuthProvider>(context);
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -33,19 +34,20 @@ class _SignupScreenState extends State<SignupScreen> {
               children: [
                 Center(
                   child: Image.asset(
-                    'assets/logo/paylio_logo.png',
-                    height: 80,
+                    'assets/logo/ledgix_logo.png',
+                    height: 100,
+                    errorBuilder: (c,e,s) => const Icon(Icons.account_balance_wallet_rounded, size: 80, color: Color(0xFF218BFF)),
                   ),
                 ),
                 const SizedBox(height: 32),
                 Text(
-                  'Create Account',
-                  style: theme.textTheme.headlineMedium,
+                  'LEDGIX',
+                  style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 1),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Start your journey with Paylio',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                  'Premium Financial Operating System',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 40),
                 TextFormField(
@@ -102,27 +104,26 @@ class _SignupScreenState extends State<SignupScreen> {
                   },
                 ),
                 const SizedBox(height: 40),
-                auth.isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ElevatedButton(
-                        onPressed: () async {
-                          if (_formKey.currentState!.validate()) {
-                            final error = await auth.signup(
-                              _nameController.text.trim(),
-                              _emailController.text.trim(),
-                              _passwordController.text,
-                            );
-                            if (error != null && mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(error), backgroundColor: Colors.red),
-                              );
-                            } else if (mounted) {
-                              Navigator.pop(context); // Go back to login or it will auto-switch via Consumer in main
-                            }
-                          }
-                        },
-                        child: const Text('Create Account'),
-                      ),
+                AppButton(
+                  label: 'Create Account',
+                  isLoading: auth.isLoading,
+                  onPressed: () async {
+                    if (_formKey.currentState!.validate()) {
+                      final error = await auth.signup(
+                        _nameController.text.trim(),
+                        _emailController.text.trim(),
+                        _passwordController.text,
+                      );
+                      if (error != null && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(error), backgroundColor: Colors.red),
+                        );
+                      } else if (mounted) {
+                        Navigator.pop(context); // Go back to login or it will auto-switch via Consumer in main
+                      }
+                    }
+                  },
+                ),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

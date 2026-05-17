@@ -3,13 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
 import '../../Core/settings_provider.dart';
 import '../../Core/backup_service.dart';
-import '../Auth/auth_provider.dart' as paylio_auth;
+import '../Auth/auth_provider.dart' as ledgix_auth;
 import '../Auth/edit_profile_screen.dart';
-import 'import_csv_screen.dart';
-import '../Commitments/commitments_screen.dart';
-import '../Accounts/accounts_screen.dart';
-import '../Categories/categories_screen.dart';
-import '../People/people_screen.dart';
+import '../../shared/widgets/app_button.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -23,17 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final LocalAuthentication auth_local = LocalAuthentication();
 
   final List<String> currencies = const [
-    'AED',
-    'USD',
-    'EUR',
-    'GBP',
-    'INR',
-    'PKR',
-    'SAR',
-    'OMR',
-    'KWD',
-    'BHD',
-    'QAR',
+    'AED', 'USD', 'EUR', 'GBP', 'INR', 'PKR', 'SAR', 'OMR', 'KWD', 'BHD', 'QAR',
   ];
 
   Future<void> _toggleBiometrics(bool value, SettingsProvider settings) async {
@@ -74,8 +60,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
-    final auth = Provider.of<paylio_auth.PaylioAuthProvider>(context);
+    final auth = Provider.of<ledgix_auth.LedGixAuthProvider>(context);
     final user = auth.user;
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -96,19 +83,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ListTile(
                     leading: CircleAvatar(
                       radius: 30,
-                      backgroundColor: const Color(0xFF0F766E).withOpacity(0.1),
-                      child: const Icon(Icons.person, size: 30, color: Color(0xFF0F766E)),
+                      backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                      child: Icon(Icons.person, size: 30, color: theme.colorScheme.primary),
                     ),
                     title: Text(user?.name ?? 'Guest User', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(user?.email ?? 'login to sync data', style: const TextStyle(fontSize: 12)),
-                        if (user?.paylioId != null)
-                          Text('ID: ${user!.paylioId}', style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.bold)),
+                        if (user?.ledgixId != null)
+                          Text('ID: ${user!.ledgixId}', style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    isThreeLine: user?.paylioId != null,
+                    isThreeLine: user?.ledgixId != null,
                     trailing: IconButton(
                       icon: const Icon(Icons.edit_outlined),
                       onPressed: () {
@@ -139,20 +126,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.palette_outlined, color: Colors.indigo),
-                      title: const Text('Theme Preference'),
-                      trailing: DropdownButton<String>(
-                        value: ['light', 'dark', 'system'].contains(user?.themePreference) ? user?.themePreference : 'system',
+                      leading: const Icon(Icons.brightness_4_outlined, color: Colors.indigo),
+                      title: const Text('Theme Mode'),
+                      trailing: DropdownButton<ThemeMode>(
+                        value: settings.themeMode,
                         underline: const SizedBox(),
-                        items: ['light', 'dark', 'system'].map((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value[0].toUpperCase() + value.substring(1), style: const TextStyle(fontWeight: FontWeight.bold)),
-                          );
-                        }).toList(),
-                        onChanged: (String? newValue) {
-                          if (newValue != null && user != null) {
-                            auth.updateProfile(user.copyWith(themePreference: newValue));
+                        items: const [
+                          DropdownMenuItem(value: ThemeMode.system, child: Text('System')),
+                          DropdownMenuItem(value: ThemeMode.light, child: Text('Light')),
+                          DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+                        ],
+                        onChanged: (ThemeMode? newValue) {
+                          if (newValue != null) {
+                            settings.setThemeMode(newValue);
                           }
                         },
                       ),
@@ -191,68 +177,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              if (settings.rates.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.info_outline, size: 12, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text('1 AED = ${settings.rates['PKR']?.toStringAsFixed(2)} PKR | ${settings.rates['USD']?.toStringAsFixed(4)} USD', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                      const Spacer(),
-                      InkWell(
-                        onTap: () => settings.fetchLiveRates(),
-                        child: const Text('Refresh Rates', style: TextStyle(fontSize: 10, color: Color(0xFF0F766E), fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 24),
-
-              const Text('Setup', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
-              const SizedBox(height: 8),
-              Card(
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF0F766E)),
-                      title: const Text('Accounts'),
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const AccountsScreen()));
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.category_outlined, color: Colors.blue),
-                      title: const Text('Categories'),
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const CategoriesScreen()));
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.people_outline, color: Colors.orange),
-                      title: const Text('People & Contacts'),
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const PeopleScreen()));
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.calendar_today_outlined, color: Colors.indigo),
-                      title: const Text('Fixed Commitments'),
-                      subtitle: const Text('Rent, EMIs, Bills'),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const CommitmentsScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 24),
 
               const Text('Backup & Restore', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey)),
@@ -261,29 +185,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.table_rows_outlined, color: Colors.green),
-                      title: const Text('Import CSV'),
-                      subtitle: const Text('Import bank statements'),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const ImportCsvScreen()),
-                        );
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.cloud_download_outlined, color: Color(0xFF0F766E)),
+                      leading: Icon(Icons.cloud_download_outlined, color: theme.colorScheme.primary),
                       title: const Text('Download Full Backup'),
                       subtitle: const Text('Export all data as JSON file'),
                       onTap: _handleExportBackup,
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.table_view_outlined, color: Colors.blue),
-                      title: const Text('Export Transactions CSV'),
-                      subtitle: const Text('Excel-compatible transactions report'),
-                      onTap: _handleExportCsv,
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -303,31 +208,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: Image.asset('assets/logo/paylio_logo.png', height: 24),
+                      leading: Image.asset('assets/logo/ledgix_logo.png', height: 24, errorBuilder: (c,e,s) => const Icon(Icons.info_outline)),
                       title: const Text('Version'),
-                      trailing: const Text('1.0.0'),
+                      trailing: const Text('2.0.2'),
                     ),
                     const Divider(height: 1),
                     const ListTile(
-                      leading: Icon(Icons.code, color: Colors.grey),
-                      title: Text('Developed with Love'),
+                      leading: Icon(Icons.info_outline),
+                      title: Text('Know where your money goes.'),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => auth.logout(),
-                  icon: const Icon(Icons.logout, color: Colors.red),
-                  label: const Text('Logout', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
+              AppButton(
+                label: 'Logout',
+                icon: Icons.logout,
+                color: Colors.red,
+                isOutlined: true,
+                onPressed: () => auth.logout(),
               ),
               const SizedBox(height: 40),
             ],
@@ -357,27 +256,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _handleExportCsv() async {
-    setState(() => _isBackingUp = true);
-    try {
-      await BackupService.exportTransactionsCsv();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('CSV Export failed: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isBackingUp = false);
-    }
-  }
-
   Future<void> _handleImportBackup() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Restore Data'),
-        content: const Text('This will add/restore data to your Paylio app. It may merge with existing data. Continue?'),
+        content: const Text('This will add/restore data to your LedGix app. It may merge with existing data. Continue?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(

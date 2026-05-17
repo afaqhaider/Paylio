@@ -6,6 +6,7 @@ import 'commitment_provider.dart';
 import 'add_commitment_screen.dart';
 import '../Transactions/transaction_provider.dart';
 import '../../Core/settings_provider.dart';
+import '../../shared/widgets/app_fab.dart';
 
 class CommitmentsScreen extends StatelessWidget {
   const CommitmentsScreen({super.key});
@@ -39,14 +40,21 @@ class CommitmentsScreen extends StatelessWidget {
             _buildCommitmentList(context, overdue, currency, format, commitmentProvider, txProvider, isOverdue: true),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        floatingActionButton: AppFab(
           onPressed: () {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const AddCommitmentScreen()),
             );
           },
-          child: const Icon(Icons.add),
+        ),
+        bottomNavigationBar: BottomAppBar(
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8.0,
+          height: 60,
+          color: Theme.of(context).colorScheme.surface,
+          child: Container(),
         ),
       ),
     );

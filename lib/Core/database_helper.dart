@@ -21,7 +21,7 @@ class DatabaseHelper {
     }
     if (_database != null) return _database!;
 
-    _database = await _initDB('paylio.db');
+    _database = await _initDB('ledgix.db');
     return _database!;
   }
 
@@ -71,7 +71,7 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 8) {
-      try { await db.execute('ALTER TABLE users ADD COLUMN paylioId TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE users ADD COLUMN ledgixId TEXT'); } catch (_) {}
       try { await db.execute('ALTER TABLE users ADD COLUMN username TEXT'); } catch (_) {}
       try { await db.execute('ALTER TABLE users ADD COLUMN phoneNumber TEXT'); } catch (_) {}
       try { await db.execute('ALTER TABLE users ADD COLUMN preferredCurrency TEXT'); } catch (_) {}
@@ -82,7 +82,7 @@ class DatabaseHelper {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS people (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          paylioId TEXT,
+          ledgixId TEXT,
           name TEXT,
           email TEXT,
           phone TEXT,
@@ -116,13 +116,26 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE accounts ADD COLUMN creditLimit REAL');
       } catch (_) {}
     }
+    if (oldVersion < 13) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS goals (
+          id TEXT PRIMARY KEY,
+          name TEXT,
+          targetAmount REAL,
+          savedAmount REAL,
+          color TEXT,
+          deadline TEXT,
+          createdAt TEXT
+        )
+      ''');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
     await db.execute('''
       CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        paylioId TEXT UNIQUE,
+        id TEXT PRIMARY KEY,
+        ledgixId TEXT UNIQUE,
         username TEXT UNIQUE,
         name TEXT,
         email TEXT UNIQUE,
@@ -137,7 +150,7 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE accounts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         name TEXT UNIQUE,
         type TEXT,
         openingBalance REAL,
@@ -147,7 +160,7 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         name TEXT,
         type TEXT,
         icon TEXT,
@@ -160,7 +173,7 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         type TEXT,
         category TEXT,
         account TEXT,
@@ -169,13 +182,15 @@ class DatabaseHelper {
         amount REAL,
         date TEXT,
         attachmentPath TEXT,
-        personId INTEGER
+        personId TEXT,
+        parentLoanId TEXT,
+        status TEXT
       )
     ''');
 
     await db.execute('''
       CREATE TABLE budgets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         category TEXT,
         amountLimit REAL,
         period TEXT,
@@ -188,12 +203,24 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE people (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        paylioId TEXT,
+        id TEXT PRIMARY KEY,
+        ledgixId TEXT,
         name TEXT,
         email TEXT,
         phone TEXT,
         notes TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE goals (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        targetAmount REAL,
+        savedAmount REAL,
+        color TEXT,
+        deadline TEXT,
+        createdAt TEXT
       )
     ''');
 
@@ -251,7 +278,7 @@ class DatabaseHelper {
   Future<int> insertTransaction(TransactionModel transaction) async {
     if (kIsWeb) return 0;
     final db = await instance.database;
-    return await db.insert('transactions', transaction.toMap());
+    return await db.insert('transactions', transaction.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<TransactionModel>> getTransactions({int? limit}) async {
@@ -298,18 +325,13 @@ class DatabaseHelper {
     final account = AccountModel.fromMap(accountResult.first);
     double openingBalance = account.openingBalance;
 
-    // Sum Income, Borrow, Repayment Received, and incoming Transfers for this account
-    // For Income/Borrow/Repayment, account = ?
-    // For Transfer, toAccount = ?
     final incResult = await db.rawQuery(
-      "SELECT SUM(amount) as total FROM transactions WHERE (account = ? AND type IN ('income', 'borrow', 'repayment_received')) OR (toAccount = ? AND type = 'transfer')",
+      "SELECT SUM(amount) as total FROM transactions WHERE (account = ? AND type IN ('income', 'borrow', 'repayment_received', 'loan_received')) OR (toAccount = ? AND type = 'transfer')",
       [accountName, accountName]
     );
     
-    // Sum Expense, Lend, Repayment Paid, and outgoing Transfers from this account
-    // For Expense/Lend/Repayment/Transfer, account = ?
     final expResult = await db.rawQuery(
-      "SELECT SUM(amount) as total FROM transactions WHERE (account = ? AND type IN ('expense', 'lend', 'repayment_paid', 'transfer'))",
+      "SELECT SUM(amount) as total FROM transactions WHERE (account = ? AND type IN ('expense', 'lend', 'repayment_paid', 'transfer', 'savings_transfer', 'liability_payment', 'loan_given'))",
       [accountName]
     );
 
@@ -317,9 +339,6 @@ class DatabaseHelper {
     double expense = (expResult.first['total'] as num?)?.toDouble() ?? 0;
 
     if (account.type == 'Credit Card') {
-      // For credit cards, balance represents "Used Amount" (Outstanding)
-      // expense (spending) increases used amount, income (payment) decreases it
-      // Note: openingBalance for CC could be initial debt
       return openingBalance + expense - income;
     }
 
@@ -333,7 +352,6 @@ class DatabaseHelper {
     for (var acc in accounts) {
       double balance = await getAccountBalance(acc.name);
       if (acc.type == 'Credit Card') {
-        // Credit card outstanding reduces total net worth
         total -= balance;
       } else {
         total += balance;
@@ -457,7 +475,6 @@ class DatabaseHelper {
     final startOfMonth = DateTime(now.year, now.month, 1).toIso8601String();
     final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59).toIso8601String();
 
-    // Summary should exclude transfers and only count pure income/expense
     final inc = await db.rawQuery(
       "SELECT SUM(amount) as total FROM transactions WHERE type = 'income' AND date BETWEEN ? AND ?", 
       [startOfMonth, endOfMonth]
@@ -535,8 +552,9 @@ class DatabaseHelper {
     for (var row in txs) {
       final type = row['type'] as String;
       final amount = (row['amount'] as num).toDouble();
-      if (type == 'lend') lent += amount;
-      else if (type == 'borrow') borrowed += amount;
+      if (type == 'lend') {
+        lent += amount;
+      } else if (type == 'borrow') borrowed += amount;
       else if (type == 'repayment_received') repaidReceived += amount;
       else if (type == 'repayment_paid') repaidPaid += amount;
     }

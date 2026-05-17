@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'category_model.dart';
 import 'category_provider.dart';
+import '../../shared/widgets/app_button.dart';
 
 class AddCategoryScreen extends StatefulWidget {
   final String? initialType;
@@ -24,37 +25,41 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
   @override
   Widget build(BuildContext context) {
     final catProvider = Provider.of<CategoryProvider>(context, listen: false);
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Add Category', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Add Category', style: TextStyle(fontWeight: FontWeight.w900)),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: 'Category Name',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            Text(
+              'CATEGORY DETAILS',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
+            TextField(
+              controller: nameController,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(
+                labelText: 'Category Name',
+                hintText: 'e.g. Groceries, Freelance',
+              ),
+            ),
+            const SizedBox(height: 24),
             DropdownButtonFormField<String>(
-              value: selectedType,
-              decoration: InputDecoration(
-                labelText: 'Type',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              initialValue: selectedType,
+              decoration: const InputDecoration(
+                labelText: 'Category Type',
               ),
               items: const [
                 DropdownMenuItem(value: 'expense', child: Text('Expense')),
@@ -62,28 +67,25 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
               ],
               onChanged: (val) => setState(() => selectedType = val!),
             ),
-            const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () async {
-                  if (nameController.text.isEmpty) return;
-
-                  final category = CategoryModel(
-                    name: nameController.text,
-                    type: selectedType,
+            const SizedBox(height: 48),
+            AppButton(
+              label: 'Save Category',
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a category name')),
                   );
+                  return;
+                }
 
-                  await catProvider.saveCategory(category);
-                  if (mounted) Navigator.pop(context, category.name);
-                },
-                child: const Text('Save Category', style: TextStyle(color: Colors.white, fontSize: 16)),
-              ),
+                final category = CategoryModel(
+                  name: nameController.text.trim(),
+                  type: selectedType,
+                );
+
+                await catProvider.saveCategory(category);
+                if (mounted) Navigator.pop(context, category.name);
+              },
             ),
           ],
         ),

@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PersonModel {
   final String? id;
-  final String? paylioId; // For future cross-user sync
+  final String? ledgixId; // For future cross-user sync
   final String name;
   final String? email;
   final String? phone;
@@ -10,7 +10,7 @@ class PersonModel {
 
   PersonModel({
     this.id,
-    this.paylioId,
+    this.ledgixId,
     required this.name,
     this.email,
     this.phone,
@@ -20,7 +20,7 @@ class PersonModel {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'paylioId': paylioId,
+      'ledgixId': ledgixId,
       'name': name,
       'email': email,
       'phone': phone,
@@ -31,7 +31,7 @@ class PersonModel {
   factory PersonModel.fromMap(Map<String, dynamic> map) {
     return PersonModel(
       id: map['id']?.toString(),
-      paylioId: map['paylioId'],
+      ledgixId: map['ledgixId'],
       name: map['name'],
       email: map['email'],
       phone: map['phone'],
@@ -41,7 +41,7 @@ class PersonModel {
 
   Map<String, dynamic> toFirestore() {
     return {
-      'paylioId': paylioId,
+      'ledgixId': ledgixId,
       'name': name,
       'email': email,
       'phone': phone,
@@ -54,7 +54,7 @@ class PersonModel {
     final data = doc.data() as Map<String, dynamic>;
     return PersonModel(
       id: doc.id,
-      paylioId: data['paylioId']?.toString(),
+      ledgixId: data['ledgixId']?.toString(),
       name: data['name']?.toString() ?? '',
       email: data['email']?.toString(),
       phone: data['phone']?.toString(),

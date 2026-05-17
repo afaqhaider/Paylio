@@ -8,15 +8,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class SettingsProvider with ChangeNotifier {
   static const String _currencyKey = 'selected_currency';
   static const String _biometricKey = 'biometric_enabled';
+  static const String _themeModeKey = 'theme_mode';
   
   String _currency = 'AED';
   bool _biometricEnabled = false;
+  ThemeMode _themeMode = ThemeMode.dark;
   Map<String, double> _rates = {'AED': 1.0, 'USD': 0.27, 'PKR': 75.0, 'INR': 22.0};
   bool _isFetchingRates = false;
   bool _isLoaded = false;
 
   String get currency => _currency;
   bool get biometricEnabled => _biometricEnabled;
+  bool get isDarkMode => _themeMode == ThemeMode.dark;
+  ThemeMode get themeMode => _themeMode;
   Map<String, double> get rates => _rates;
   bool get isFetchingRates => _isFetchingRates;
   bool get isLoaded => _isLoaded;
@@ -34,6 +38,8 @@ class SettingsProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _currency = prefs.getString(_currencyKey) ?? 'AED';
     _biometricEnabled = prefs.getBool(_biometricKey) ?? false;
+    final themeIndex = prefs.getInt(_themeModeKey) ?? ThemeMode.dark.index;
+    _themeMode = ThemeMode.values[themeIndex];
     
     // Try to load from Firestore if user is logged in
     final user = FirebaseAuth.instance.currentUser;
@@ -43,12 +49,30 @@ class SettingsProvider with ChangeNotifier {
         if (doc.exists) {
           _currency = doc.data()?['currency'] ?? _currency;
           _biometricEnabled = doc.data()?['biometricEnabled'] ?? _biometricEnabled;
+          if (doc.data()?['themeMode'] != null) {
+            _themeMode = ThemeMode.values[doc.data()?['themeMode']];
+          }
         }
       } catch (e) {
         debugPrint("SettingsProvider: Failed to load from Firestore: $e");
       }
     }
     _isLoaded = true;
+    notifyListeners();
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    _themeMode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_themeModeKey, mode.index);
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('settings').doc('general').set({
+        'themeMode': mode.index,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
     notifyListeners();
   }
 

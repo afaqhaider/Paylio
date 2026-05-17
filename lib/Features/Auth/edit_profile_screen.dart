@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'auth_provider.dart' as paylio_auth;
+import 'auth_provider.dart' as ledgix_auth;
+import '../../shared/widgets/app_button.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -20,7 +21,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    final user = Provider.of<paylio_auth.PaylioAuthProvider>(context, listen: false).user;
+    final user = Provider.of<ledgix_auth.LedGixAuthProvider>(context, listen: false).user;
     if (user != null) {
       _nameController.text = user.name;
       _emailController.text = user.email;
@@ -32,7 +33,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<paylio_auth.PaylioAuthProvider>(context);
+    final auth = Provider.of<ledgix_auth.LedGixAuthProvider>(context);
     final user = auth.user;
     final theme = Theme.of(context);
 
@@ -74,7 +75,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Center(
                 child: Column(
                   children: [
-                    Text('Paylio ID: ${user?.paylioId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
+                    Text('LedGix ID: ${user?.ledgixId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
                     const SizedBox(height: 4),
                     Text(user?.email ?? '', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                   ],
@@ -124,7 +125,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 40),
               
-              ElevatedButton(
+              AppButton(
+                label: 'Save Changes',
                 onPressed: () async {
                   if (_formKey.currentState!.validate()) {
                     final updatedUser = auth.user!.copyWith(
@@ -142,7 +144,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     }
                   }
                 },
-                child: const Text('Save Changes'),
               ),
               const SizedBox(height: 24),
             ],

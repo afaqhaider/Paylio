@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../Core/database_helper.dart';
 import 'category_model.dart';
 import 'category_service.dart';
 
 class CategoryProvider extends ChangeNotifier {
   final CategoryService _service = CategoryService();
+  final DatabaseHelper _db = DatabaseHelper.instance;
   List<CategoryModel> _incomeCategories = [];
   List<CategoryModel> _expenseCategories = [];
   StreamSubscription? _incomeSub;
@@ -20,7 +22,7 @@ class CategoryProvider extends ChangeNotifier {
     Color(0xFFEC4899), // Pink
     Color(0xFF6366F1), // Indigo
     Color(0xFFF97316), // Orange
-    Color(0xFF14B8A6), // Teal
+    Color(0xFF218BFF), // Blue
     Color(0xFF84CC16), // Lime
     Color(0xFF06B6D4), // Cyan
   ];
@@ -59,7 +61,19 @@ class CategoryProvider extends ChangeNotifier {
     _init();
   }
 
-  void _init() {
+  Future<void> _init() async {
+    // 1. Load from local database first
+    try {
+      final allCats = await _db.getCategories();
+      _incomeCategories = allCats.where((c) => c.type == 'income').toList();
+      _expenseCategories = allCats.where((c) => c.type == 'expense').toList();
+      notifyListeners();
+      debugPrint("Offline-First: Categories loaded from SQLite (${allCats.length})");
+    } catch (e) {
+      debugPrint("Offline-First Error: Failed to load categories from SQLite: $e");
+    }
+
+    // 2. Start cloud sync
     _incomeSub = _service.streamCategories('income').listen((cats) {
       _incomeCategories = cats;
       notifyListeners();

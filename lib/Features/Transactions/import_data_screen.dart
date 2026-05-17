@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
@@ -18,19 +17,26 @@ import 'transaction_provider.dart';
 enum ImportType { transactions, categories, accounts }
 
 class ImportDataScreen extends StatefulWidget {
-  const ImportDataScreen({super.key});
+  final ImportType initialType;
+  const ImportDataScreen({super.key, this.initialType = ImportType.transactions});
 
   @override
   State<ImportDataScreen> createState() => _ImportDataScreenState();
 }
 
 class _ImportDataScreenState extends State<ImportDataScreen> {
-  ImportType _selectedType = ImportType.transactions;
+  late ImportType _selectedType;
   bool _isParsing = false;
   bool _isImporting = false;
   List<List<dynamic>> _csvData = [];
   List<Map<String, dynamic>> _validatedRows = [];
   String? _fileName;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedType = widget.initialType;
+  }
 
   final List<String> _transactionHeaders = [
     'Date', 'Description', 'Amount', 'Type', 'Category Name', 'Account Name', 'Payment Method', 'Notes'
@@ -50,17 +56,17 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
       case ImportType.transactions:
         rows.add(_transactionHeaders);
         rows.add(['2024-05-08', 'Lunch at Waitrose', '125.50', 'Expense', 'Food & Drinks', 'Cash', 'Cash', 'Groceries']);
-        fileName = 'paylio_transactions_template.csv';
+        fileName = 'ledgix_transactions_template.csv';
         break;
       case ImportType.categories:
         rows.add(_categoryHeaders);
         rows.add(['Shopping', 'Expense', '', '500', 'shopping_cart', '0xFF2196F3', 'TRUE']);
-        fileName = 'paylio_categories_template.csv';
+        fileName = 'ledgix_categories_template.csv';
         break;
       case ImportType.accounts:
         rows.add(_accountHeaders);
         rows.add(['RAKBANK', 'Bank', '5000', 'AED', 'RAKBANK', 'TRUE', 'FALSE', 'Primary Account', 'TRUE']);
-        fileName = 'paylio_accounts_template.csv';
+        fileName = 'ledgix_accounts_template.csv';
         break;
     }
 
@@ -69,7 +75,7 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
     final file = File('${directory.path}/$fileName');
     await file.writeAsString(csv);
 
-    await Share.shareXFiles([XFile(file.path)], text: 'Paylio Import Template');
+    await Share.shareXFiles([XFile(file.path)], text: 'LedGix Import Template');
   }
 
   Future<void> _pickFile() async {
@@ -99,14 +105,10 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
         final rows = const CsvToListConverter(shouldParseNumbers: false).convert(content);
         if (rows.isEmpty) throw Exception('File is empty');
 
-        if (mounted) {
-          setState(() {
-            _csvData = rows;
-          });
-
-          // Call validation outside of setState
+        setState(() {
+          _csvData = rows;
           _validateData();
-        }
+        });
       } catch (e, stack) {
         debugPrint("CSV Parsing Error: $e");
         debugPrintStack(stackTrace: stack);
@@ -114,9 +116,7 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
         }
       } finally {
-        if (mounted) {
-          setState(() => _isParsing = false);
-        }
+        setState(() => _isParsing = false);
       }
     }
   }
@@ -132,85 +132,73 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
   void _validateData() {
     if (_csvData.isEmpty) return;
     
-    try {
-      debugPrint('CSV Data raw type: ${_csvData[0].runtimeType}');
-      final List<String> rawHeader = _csvData[0].map((e) => _normalize(e)).toList();
-      final List<String> normalizedHeader = rawHeader.map((h) => _normalizeHeader(h)).toList();
-      
-      debugPrint('Converted Headers: $rawHeader');
-      debugPrint('Normalized Headers: $normalizedHeader');
+    debugPrint('CSV Data raw type: ${_csvData[0].runtimeType}');
+    final List<String> rawHeader = _csvData[0].map((e) => _normalize(e)).toList();
+    final List<String> normalizedHeader = rawHeader.map((h) => _normalizeHeader(h)).toList();
+    
+    debugPrint('Converted Headers: $rawHeader');
+    debugPrint('Normalized Headers: $normalizedHeader');
 
-      List<Map<String, dynamic>> results = [];
+    List<Map<String, dynamic>> results = [];
 
-      // Verify headers with normalization
-      List<String> expectedHeaders = _selectedType == ImportType.transactions 
-          ? _transactionHeaders : _selectedType == ImportType.categories 
-          ? _categoryHeaders : _accountHeaders;
+    // Verify headers with normalization
+    List<String> expectedHeaders = _selectedType == ImportType.transactions 
+        ? _transactionHeaders : _selectedType == ImportType.categories 
+        ? _categoryHeaders : _accountHeaders;
 
-      List<String> normalizedExpected = expectedHeaders.map((h) => _normalizeHeader(h)).toList();
+    List<String> normalizedExpected = expectedHeaders.map((h) => _normalizeHeader(h)).toList();
 
-      bool headersMatch = true;
-      for (var h in normalizedExpected) {
-        if (!normalizedHeader.contains(h)) {
-          headersMatch = false;
-          debugPrint('Missing expected header: $h');
-          break;
-        }
-      }
-
-      if (!headersMatch) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid template. Headers do not match.')));
-        }
-        return;
-      }
-
-      final txProvider = Provider.of<TransactionProvider>(context, listen: false);
-      final catProvider = Provider.of<CategoryProvider>(context, listen: false);
-      final accProvider = Provider.of<AccountProvider>(context, listen: false);
-
-      for (int i = 1; i < _csvData.length; i++) {
-        final List<dynamic> row = _csvData[i];
-        if (row.isEmpty || (row.length == 1 && _normalize(row[0]).isEmpty)) continue;
-
-        // Safe conversion of row values
-        final List<String> rowValues = row.map((e) => _normalize(e)).toList();
-
-        Map<String, dynamic> validated = {'row': rowValues, 'isValid': true, 'errors': []};
-        Map<String, String> data = {};
-        
-        for (int j = 0; j < expectedHeaders.length; j++) {
-          String expectedNorm = _normalizeHeader(expectedHeaders[j]);
-          int actualIdx = normalizedHeader.indexOf(expectedNorm);
-          if (actualIdx != -1 && actualIdx < rowValues.length) {
-            data[expectedHeaders[j]] = rowValues[actualIdx];
-          } else {
-            data[expectedHeaders[j]] = '';
-          }
-        }
-
-        _performValidation(validated, data, txProvider, catProvider, accProvider);
-        results.add(validated);
-      }
-
-      if (mounted) {
-        setState(() {
-          _validatedRows = results;
-        });
-      }
-    } catch (e, stack) {
-      log("Validation Error", error: e, stackTrace: stack);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Validation failed: $e')));
+    bool headersMatch = true;
+    for (var h in normalizedExpected) {
+      if (!normalizedHeader.contains(h)) {
+        headersMatch = false;
+        debugPrint('Missing expected header: $h');
+        break;
       }
     }
+
+    if (!headersMatch) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid template. Headers do not match.')));
+      }
+      return;
+    }
+
+    final txProvider = Provider.of<TransactionProvider>(context, listen: false);
+    final catProvider = Provider.of<CategoryProvider>(context, listen: false);
+    final accProvider = Provider.of<AccountProvider>(context, listen: false);
+
+    for (int i = 1; i < _csvData.length; i++) {
+      final List<dynamic> row = _csvData[i];
+      if (row.isEmpty || (row.length == 1 && _normalize(row[0]).isEmpty)) continue;
+
+      final List<String> rowValues = row.map((e) => _normalize(e)).toList();
+      debugPrint('Row $i values: $rowValues');
+
+      Map<String, dynamic> validated = {'row': rowValues, 'isValid': true, 'errors': []};
+      Map<String, String> data = {};
+      
+      for (int j = 0; j < expectedHeaders.length; j++) {
+        String expectedNorm = _normalizeHeader(expectedHeaders[j]);
+        int actualIdx = normalizedHeader.indexOf(expectedNorm);
+        if (actualIdx != -1 && actualIdx < rowValues.length) {
+          data[expectedHeaders[j]] = rowValues[actualIdx];
+        } else {
+          data[expectedHeaders[j]] = '';
+        }
+      }
+
+      _performValidation(validated, data, txProvider, catProvider, accProvider);
+      results.add(validated);
+    }
+
+    setState(() => _validatedRows = results);
   }
 
   void _performValidation(Map<String, dynamic> validated, Map<String, String> data, TransactionProvider txP, CategoryProvider catP, AccountProvider accP) {
     List<String> errors = [];
 
     if (_selectedType == ImportType.transactions) {
-      // Date
       if (data['Date']!.isEmpty) {
         errors.add('Missing Date');
       } else {
@@ -221,7 +209,6 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
         }
       }
 
-      // Amount
       double? amount = double.tryParse(data['Amount']!.replaceAll(',', ''));
       if (data['Amount']!.isEmpty) {
         errors.add('Missing Amount');
@@ -229,13 +216,11 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
         errors.add('Invalid Amount');
       }
 
-      // Type
       String type = data['Type']!.toLowerCase();
       if (!['income', 'expense'].contains(type)) {
         errors.add('Invalid Type. Use Income or Expense');
       }
 
-      // Duplicate Check
       if (errors.isEmpty) {
         DateTime date = DateFormat('yyyy-MM-dd').parse(data['Date']!);
         bool isDuplicate = txP.transactions.any((e) =>
@@ -253,7 +238,6 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
       String type = data['Type']!.toLowerCase();
       if (!['income', 'expense'].contains(type)) errors.add('Invalid Type. Use Income or Expense');
       
-      // Duplicate
       if (catP.expenseCategories.any((c) => c.name == data['Category Name'] && type == 'expense') ||
           catP.incomeCategories.any((c) => c.name == data['Category Name'] && type == 'income')) {
         errors.add('Duplicate Category');
@@ -269,7 +253,6 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
         errors.add('Invalid Opening Balance');
       }
       
-      // Duplicate
       if (accP.accounts.any((a) => a.name == data['Account Name'])) {
         errors.add('Duplicate Account Name');
       }
@@ -294,25 +277,20 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
 
       int importedCount = 0;
 
-      final List<String> rawHeader = _csvData[0].map((e) => _normalize(e)).toList();
-      final List<String> normalizedHeader = rawHeader.map((h) => _normalizeHeader(h)).toList();
-
-      List<String> expectedHeaders = _selectedType == ImportType.transactions 
-          ? _transactionHeaders : _selectedType == ImportType.categories 
-          ? _categoryHeaders : _accountHeaders;
-
       for (var rowMap in validRows) {
-        final row = rowMap['row'] as List<String>;
+        final List<String> row = rowMap['row'];
+        final header = _csvData[0].map((e) => _normalize(e)).toList();
+        final normalizedHeader = header.map((h) => _normalizeHeader(h)).toList();
+
         Map<String, String> data = {};
-        
-        for (int j = 0; j < expectedHeaders.length; j++) {
-          String expectedNorm = _normalizeHeader(expectedHeaders[j]);
-          int actualIdx = normalizedHeader.indexOf(expectedNorm);
-          if (actualIdx != -1 && actualIdx < row.length) {
-            data[expectedHeaders[j]] = row[actualIdx];
-          } else {
-            data[expectedHeaders[j]] = '';
-          }
+        List<String> expectedHeaders = _selectedType == ImportType.transactions 
+            ? _transactionHeaders : _selectedType == ImportType.categories 
+            ? _categoryHeaders : _accountHeaders;
+
+        for (var h in expectedHeaders) {
+            String norm = _normalizeHeader(h);
+            int idx = normalizedHeader.indexOf(norm);
+            data[h] = idx != -1 && idx < row.length ? row[idx] : '';
         }
 
         if (_selectedType == ImportType.transactions) {
@@ -338,7 +316,7 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
               name: categoryName,
               type: type,
               icon: 'category',
-              color: '0xFF0F766E',
+              color: '0xFF218BFF',
               isActive: true,
             ));
           }
@@ -357,7 +335,7 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
             name: data['Category Name']!,
             type: data['Type']!.toLowerCase(),
             icon: data['Icon']!.isEmpty ? 'category' : data['Icon']!,
-            color: data['Color']!.isEmpty ? '0xFF0F766E' : data['Color']!,
+            color: data['Color']!.isEmpty ? '0xFF218BFF' : data['Color']!,
             isActive: data['Is Active']!.toUpperCase() != 'FALSE',
           ));
         } else if (_selectedType == ImportType.accounts) {
@@ -404,47 +382,47 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Import Data'),
+        title: const Text('Import Data', style: TextStyle(fontWeight: FontWeight.w900)),
       ),
       body: Column(
         children: [
           _buildTypeSelector(),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildStep(
                     '1',
                     'Download Template',
-                    'Download the standard CSV template for ${_selectedType.name}.',
+                    'Get the standard CSV template for ${_selectedType.name}.',
                     ElevatedButton.icon(
                       onPressed: _downloadTemplate,
-                      icon: const Icon(Icons.download),
+                      icon: const Icon(Icons.download_rounded),
                       label: const Text('Download Template'),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
                   _buildStep(
                     '2',
                     'Upload Completed File',
-                    'Fill the CSV and upload it here.',
+                    'Upload your filled CSV file here.',
                     ElevatedButton.icon(
                       onPressed: _pickFile,
-                      icon: const Icon(Icons.upload_file),
+                      icon: const Icon(Icons.upload_file_rounded),
                       label: Text(_fileName ?? 'Select CSV File'),
                     ),
                   ),
                   if (_isParsing)
                     const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
+                      padding: EdgeInsets.symmetric(vertical: 40),
                       child: Center(child: CircularProgressIndicator()),
                     ),
                   if (_validatedRows.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    const Text('Preview & Validation', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 40),
+                    Text('PREVIEW & VALIDATION', style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 1.5, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4))),
+                    const SizedBox(height: 16),
                     _buildPreviewList(),
                   ],
                 ],
@@ -453,15 +431,14 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
           ),
           if (_validatedRows.any((r) => r['isValid']))
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(24.0),
               child: ElevatedButton(
                 onPressed: _isImporting ? null : _executeImport,
                 style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: const Color(0xFF0F766E),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                 ),
                 child: _isImporting 
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : Text('Import ${_validatedRows.where((r) => r['isValid']).length} Valid Records'),
               ),
             ),
@@ -472,8 +449,8 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
 
   Widget _buildTypeSelector() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      color: Theme.of(context).cardColor,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      color: Theme.of(context).colorScheme.surface,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: ImportType.values.map((type) {
@@ -491,6 +468,10 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
                 });
               }
             },
+            selectedColor: Theme.of(context).colorScheme.primary,
+            labelStyle: TextStyle(color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.bold),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            showCheckmark: false,
           );
         }).toList(),
       ),
@@ -501,19 +482,21 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CircleAvatar(
-          radius: 12,
-          backgroundColor: const Color(0xFF0F766E),
-          child: Text(number, style: const TextStyle(color: Colors.white, fontSize: 12)),
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, shape: BoxShape.circle),
+          child: Center(child: Text(number, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900))),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              Text(description, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-              const SizedBox(height: 12),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              const SizedBox(height: 4),
+              Text(description, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 14)),
+              const SizedBox(height: 16),
               action,
             ],
           ),
@@ -531,30 +514,40 @@ class _ImportDataScreenState extends State<ImportDataScreen> {
         final row = _validatedRows[index];
         final bool isValid = row['isValid'];
         final List<String> errors = row['errors'];
-        final data = row['row'];
+        final List<String> data = row['row'];
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: isValid ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3)),
+          ),
           child: ExpansionTile(
+            shape: const Border(),
             leading: Icon(
-              isValid ? Icons.check_circle : Icons.error,
-              color: isValid ? Colors.green : Colors.red,
+              isValid ? Icons.check_circle_rounded : Icons.error_rounded,
+              color: isValid ? Colors.green : Colors.redAccent,
             ),
-            title: Text(data[0].toString().isEmpty ? '(Empty Name/Date)' : data[0].toString(), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            subtitle: Text(isValid ? 'Ready to import' : errors.join(', '), style: TextStyle(color: isValid ? Colors.green : Colors.red, fontSize: 12)),
+            title: Text(data[0].isEmpty ? '(No Primary Key)' : data[0], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+            subtitle: Text(isValid ? 'Ready to import' : errors.join(', '), style: TextStyle(color: isValid ? Colors.green : Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600)),
             children: [
               Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Row Data:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text(data.join(' | ')),
+                    const Text('ROW DATA', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1, color: Colors.grey)),
+                    const SizedBox(height: 8),
+                    Text(data.join('  |  '), style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
                     if (!isValid) ...[
+                      const SizedBox(height: 16),
+                      const Text('VALIDATION ERRORS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1, color: Colors.redAccent)),
                       const SizedBox(height: 8),
-                      const Text('Validation Errors:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                      ...errors.map((e) => Text('• $e', style: const TextStyle(color: Colors.red))),
+                      ...errors.map((e) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('• $e', style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                      )),
                     ]
                   ],
                 ),

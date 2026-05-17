@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../Core/notification_service.dart';
 import 'user_model.dart';
 
-class PaylioAuthProvider extends ChangeNotifier {
+class LedGixAuthProvider extends ChangeNotifier {
   // --- Firebase Service Getters ---
   // Using lazy getters to ensure Firebase is initialized before access.
   FirebaseAuth get _auth => FirebaseAuth.instance;
@@ -17,10 +18,12 @@ class PaylioAuthProvider extends ChangeNotifier {
   UserModel? get user => _user;
   bool get isLoading => _isLoading;
 
-  PaylioAuthProvider() {
+  LedGixAuthProvider() {
     // Note: Auth routing is now handled declaratively by AuthGate using 
     // FirebaseAuth.instance.authStateChanges() in main.dart
   }
+
+  bool _notificationsInitialized = false;
 
   /// Fetches the user profile from Firestore and updates the local [_user] state.
   /// This is typically called once upon login or app startup.
@@ -30,7 +33,7 @@ class PaylioAuthProvider extends ChangeNotifier {
       if (doc.exists) {
         final data = doc.data()!;
         _user = UserModel(
-          paylioId: data['uid'] ?? uid,
+          ledgixId: data['uid'] ?? uid,
           name: data['fullName'] ?? 'User',
           email: data['email'] ?? '',
           password: '', // Never store passwords in the model
@@ -41,7 +44,7 @@ class PaylioAuthProvider extends ChangeNotifier {
       } else {
         // Create a local fallback if the document doesn't exist (e.g. legacy users)
         _user = UserModel(
-          paylioId: uid,
+          ledgixId: uid,
           name: 'User',
           email: _auth.currentUser?.email ?? '',
           password: '',
@@ -50,6 +53,12 @@ class PaylioAuthProvider extends ChangeNotifier {
         );
         debugPrint("Firestore doc missing for $uid. Using local fallback.");
       }
+
+      if (!_notificationsInitialized) {
+        NotificationService.initialize();
+        _notificationsInitialized = true;
+      }
+
       notifyListeners();
     } catch (e) {
       debugPrint("Error fetching user profile: $e");

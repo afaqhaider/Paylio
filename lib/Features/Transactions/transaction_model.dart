@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TransactionModel {
   final String? id;
-  final String type; // income, expense, transfer, borrow, lend, repayment_received, repayment_paid
+  final String type; // income, expense, transfer, loan_given, loan_received, repayment_received, repayment_paid
   final String category;
   final String account;
   final String? toAccount;
@@ -10,7 +10,11 @@ class TransactionModel {
   final double amount;
   final DateTime date;
   final String? attachmentPath;
-  final String? personId; // Changed to String for consistency
+  final String? personId; 
+  final String? parentLoanId; 
+  final String status; // 'approved', 'pending_approval', 'rejected'
+  final double? proposedAmount; 
+  final DateTime? approvedAt;
 
   TransactionModel({
     this.id,
@@ -23,6 +27,10 @@ class TransactionModel {
     required this.date,
     this.attachmentPath,
     this.personId,
+    this.parentLoanId,
+    this.status = 'approved',
+    this.proposedAmount,
+    this.approvedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -37,6 +45,10 @@ class TransactionModel {
       'date': date.toIso8601String(),
       'attachmentPath': attachmentPath,
       'personId': personId,
+      'parentLoanId': parentLoanId,
+      'status': status,
+      'proposedAmount': proposedAmount,
+      'approvedAt': approvedAt?.toIso8601String(),
     };
   }
 
@@ -52,6 +64,10 @@ class TransactionModel {
       date: map['date'] != null ? DateTime.parse(map['date']) : DateTime.now(),
       attachmentPath: map['attachmentPath'],
       personId: map['personId']?.toString(),
+      parentLoanId: map['parentLoanId']?.toString(),
+      status: map['status'] ?? 'approved',
+      proposedAmount: (map['proposedAmount'] as num?)?.toDouble(),
+      approvedAt: map['approvedAt'] != null ? DateTime.parse(map['approvedAt']) : null,
     );
   }
 
@@ -72,6 +88,10 @@ class TransactionModel {
       'date': Timestamp.fromDate(date),
       'attachmentPath': attachmentPath,
       'personId': personId,
+      'parentLoanId': parentLoanId,
+      'status': status,
+      'proposedAmount': proposedAmount,
+      'approvedAt': approvedAt != null ? Timestamp.fromDate(approvedAt!) : null,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -89,6 +109,10 @@ class TransactionModel {
       date: parseDate(data['date']),
       attachmentPath: data['attachmentPath']?.toString(),
       personId: data['personId']?.toString(),
+      parentLoanId: data['parentLoanId']?.toString(),
+      status: data['status']?.toString() ?? 'approved',
+      proposedAmount: (data['proposedAmount'] as num?)?.toDouble(),
+      approvedAt: (data['approvedAt'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -103,6 +127,10 @@ class TransactionModel {
     DateTime? date,
     String? attachmentPath,
     String? personId,
+    String? parentLoanId,
+    String? status,
+    double? proposedAmount,
+    DateTime? approvedAt,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -115,6 +143,10 @@ class TransactionModel {
       date: date ?? this.date,
       attachmentPath: attachmentPath ?? this.attachmentPath,
       personId: personId ?? this.personId,
+      parentLoanId: parentLoanId ?? this.parentLoanId,
+      status: status ?? this.status,
+      proposedAmount: proposedAmount ?? this.proposedAmount,
+      approvedAt: approvedAt ?? this.approvedAt,
     );
   }
 }

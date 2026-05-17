@@ -36,9 +36,13 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint("AppLifecycleState changed to: $state");
     if (state == AppLifecycleState.paused) {
-      setState(() {
-        _isAuthenticated = false;
-      });
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      // Only lock if biometrics are enabled. If disabled, stay authenticated.
+      if (settings.biometricEnabled) {
+        setState(() {
+          _isAuthenticated = false;
+        });
+      }
     } else if (state == AppLifecycleState.resumed) {
       _checkBiometrics();
     }
@@ -52,17 +56,16 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
     // Wait for settings to be loaded if they aren't yet
     if (!settings.isLoaded) {
       debugPrint("SecurityWrapper: Settings not loaded, waiting...");
-      // We can't easily "wait" here without a loop or a listener, 
-      // but usually settings load very fast.
-      // Let's rely on didUpdateWidget or just re-check if settings changed.
       return;
     }
 
     if (!settings.biometricEnabled) {
       debugPrint("SecurityWrapper: Biometrics disabled in settings.");
-      setState(() {
-        _isAuthenticated = true;
-      });
+      if (!_isAuthenticated) {
+        setState(() {
+          _isAuthenticated = true;
+        });
+      }
       return;
     }
 
@@ -86,17 +89,26 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
-    // Re-check if settings just loaded and we aren't authenticated yet
     final settings = Provider.of<SettingsProvider>(context);
-    if (settings.isLoaded && !_isAuthenticated && !_isAuthenticating) {
-      // Trigger check in next frame to avoid setState during build
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkBiometrics());
+
+    // 1. If settings aren't loaded yet, show loading screen
+    if (!settings.isLoaded) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
+    // 2. If biometrics are disabled, show content immediately
+    if (!settings.biometricEnabled) {
+      return widget.child;
+    }
+
+    // 3. If authenticated, show content
     if (_isAuthenticated) {
       return widget.child;
     }
 
+    // 4. Otherwise show lock screen
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -104,10 +116,10 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.lock_outline, size: 80, color: Color(0xFF0F766E)),
+            const Icon(Icons.lock_outline, size: 80, color: Color(0xFF218BFF)),
             const SizedBox(height: 24),
             const Text(
-              'Paylio is Locked',
+              'LedGix is Locked',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
@@ -116,17 +128,17 @@ class _SecurityWrapperState extends State<SecurityWrapper> with WidgetsBindingOb
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 48),
-            if (settings.isLoaded)
-              ElevatedButton.icon(
-                onPressed: _checkBiometrics,
-                icon: const Icon(Icons.fingerprint),
-                label: const Text('Unlock with Biometrics'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(200, 50),
-                ),
-              )
-            else
-              const CircularProgressIndicator(),
+            ElevatedButton.icon(
+              onPressed: _checkBiometrics,
+              icon: const Icon(Icons.fingerprint),
+              label: const Text('Unlock with Biometrics'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(220, 56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                backgroundColor: const Color(0xFF218BFF),
+                foregroundColor: Colors.white,
+              ),
+            ),
           ],
         ),
       ),

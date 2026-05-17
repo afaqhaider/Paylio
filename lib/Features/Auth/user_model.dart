@@ -1,6 +1,6 @@
 class UserModel {
   final int? id;
-  final String paylioId; // Unique Paylio User ID
+  final String ledgixId; // Unique LedGix User ID
   final String? username;
   final String name;
   final String email;
@@ -13,7 +13,7 @@ class UserModel {
 
   UserModel({
     this.id,
-    required this.paylioId,
+    required this.ledgixId,
     this.username,
     required this.name,
     required this.email,
@@ -28,7 +28,7 @@ class UserModel {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'paylioId': paylioId,
+      'ledgixId': ledgixId,
       'username': username,
       'name': name,
       'email': email,
@@ -44,7 +44,7 @@ class UserModel {
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       id: map['id'],
-      paylioId: map['paylioId'] ?? '',
+      ledgixId: map['ledgixId'] ?? '',
       username: map['username'],
       name: map['name'] ?? '',
       email: map['email'] ?? '',
@@ -59,7 +59,7 @@ class UserModel {
 
   UserModel copyWith({
     int? id,
-    String? paylioId,
+    String? ledgixId,
     String? username,
     String? name,
     String? email,
@@ -72,7 +72,7 @@ class UserModel {
   }) {
     return UserModel(
       id: id ?? this.id,
-      paylioId: paylioId ?? this.paylioId,
+      ledgixId: ledgixId ?? this.ledgixId,
       username: username ?? this.username,
       name: name ?? this.name,
       email: email ?? this.email,

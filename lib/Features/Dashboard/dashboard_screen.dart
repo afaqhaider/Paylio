@@ -7,578 +7,572 @@ import '../Transactions/transaction_model.dart';
 import '../Transactions/transaction_provider.dart';
 import '../Accounts/account_provider.dart';
 import '../Categories/category_provider.dart';
-import '../Transactions/add_expense_screen.dart';
 import '../Commitments/commitment_provider.dart';
 import '../Commitments/commitments_screen.dart';
+import '../Goals/goal_provider.dart';
+import '../Goals/goals_screen.dart';
+import '../Transactions/transaction_detail_sheet.dart';
+import '../Stats/expense_reports_page.dart';
+import '../Auth/auth_provider.dart' as ledgix_auth;
+import '../Transactions/pending_approvals_screen.dart';
+import '../Transactions/shared_transaction_provider.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(int) onTabChange;
-  const DashboardScreen({super.key, required this.onTabChange});
+  final GlobalKey<ScaffoldState> scaffoldKey;
+  const DashboardScreen({super.key, required this.onTabChange, required this.scaffoldKey});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  String selectedPeriod = 'Current Month';
-  DateTimeRange? customDateRange;
-
-  List<TransactionModel> _getFilteredTransactions(List<TransactionModel> all) {
-    final now = DateTime.now();
-    DateTime start;
-    DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
-    switch (selectedPeriod) {
-      case 'Current Month':
-        start = DateTime(now.year, now.month, 1);
-        break;
-      case 'Last Month':
-        start = DateTime(now.year, now.month - 1, 1);
-        end = DateTime(now.year, now.month, 0, 23, 59, 59);
-        break;
-      case 'Last 3 Months':
-        start = DateTime(now.year, now.month - 2, 1);
-        break;
-      case 'This Year':
-        start = DateTime(now.year, 1, 1);
-        break;
-      case 'Custom':
-        if (customDateRange != null) {
-          start = customDateRange!.start;
-          end = customDateRange!.end.add(const Duration(days: 1)).subtract(const Duration(seconds: 1));
-        } else {
-          start = DateTime(now.year, now.month, 1);
-        }
-        break;
-      case 'All Time':
-      default:
-        return all;
-    }
-
-    return all.where((t) => t.date.isAfter(start.subtract(const Duration(seconds: 1))) && t.date.isBefore(end.add(const Duration(seconds: 1)))).toList();
-  }
-
-  Map<String, double> _calculateSummary(List<TransactionModel> txs) {
-    double income = 0;
-    double expense = 0;
-    for (var tx in txs) {
-      final type = tx.type.toLowerCase();
-      if (['income', 'repayment_received', 'borrow'].contains(type)) {
-        income += tx.amount;
-      } else if (['expense', 'repayment_paid', 'lend'].contains(type)) {
-        expense += tx.amount;
-      }
-    }
-    return {'income': income, 'expense': expense};
-  }
+  final currencyFormat = NumberFormat('#,##0.00');
 
   @override
   Widget build(BuildContext context) {
     final txProvider = Provider.of<TransactionProvider>(context);
     final accProvider = Provider.of<AccountProvider>(context);
     final settings = Provider.of<SettingsProvider>(context);
+    final authProvider = Provider.of<ledgix_auth.LedGixAuthProvider>(context);
     final commitmentProvider = Provider.of<CommitmentProvider>(context);
+    final sharedProvider = Provider.of<SharedTransactionProvider>(context);
+    final catProvider = Provider.of<CategoryProvider>(context);
+    final goalProvider = Provider.of<GoalProvider>(context);
     
-    final currencyFormat = NumberFormat('#,##0.00');
-    final String currency = settings.currency;
     final theme = Theme.of(context);
+    final String currency = settings.currency;
+    final user = authProvider.user;
 
-    final filteredTransactions = _getFilteredTransactions(txProvider.transactions);
-    final summary = _calculateSummary(filteredTransactions);
-    final totalBalance = accProvider.getTotalBalance(txProvider.transactions); // Balance is always All Time
+    final totalBalance = accProvider.getTotalBalance(txProvider.transactions);
+    final monthlySummary = txProvider.getMonthlySummary();
     final recentTransactions = txProvider.transactions.take(5).toList();
 
-    final isLoading = txProvider.isLoading || accProvider.isLoading;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('PAYLIO'),
-        centerTitle: false,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {},
-          ),
-        ],
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () async {},
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Period Selector
-                        _buildPeriodSelector(),
-
-                        // Premium Balance Card
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(24),
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.secondary,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Total Balance',
-                                style: TextStyle(
-                                  color: Colors.white.withAlpha(178),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              FittedBox(
-                                child: Text(
-                                  '$currency ${currencyFormat.format(totalBalance)}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.5,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 32),
-                              Row(
-                                children: [
-                                  Expanded(child: summaryMiniItem('Income', summary['income'] ?? 0, const Color(0xFF10B981), currency)),
-                                  Container(width: 1, height: 40, color: Colors.white.withAlpha(25)),
-                                  Expanded(child: summaryMiniItem('Expenses', summary['expense'] ?? 0, const Color(0xFFEF4444), currency)),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Charts Section
-                        _buildCharts(filteredTransactions, currency, theme),
-
-                        // Upcoming Commitments Card
-                        _buildCommitmentsSummary(commitmentProvider, currency, currencyFormat, theme),
-
-                        // Modern Quick Actions
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                          child: Row(
-                            children: [
-                              Expanded(child: actionButton(Icons.add_rounded, 'Expense', const Color(0xFFEF4444))),
-                              const SizedBox(width: 12),
-                              Expanded(child: actionButton(Icons.arrow_downward_rounded, 'Income', const Color(0xFF10B981))),
-                              const SizedBox(width: 12),
-                              Expanded(child: actionButton(Icons.swap_horiz_rounded, 'Transfer', const Color(0xFF7C3AED))),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Recent Activity Header
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Recent Activity',
-                                style: theme.textTheme.titleLarge?.copyWith(fontSize: 18),
-                              ),
-                              TextButton(
-                                onPressed: () => widget.onTabChange(1),
-                                child: const Text('See All'),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        
-                        recentTransactions.isEmpty
-                            ? const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('No recent activity')))
-                            : Column(
-                                children: recentTransactions.map((item) => transactionListItem(item, currency, context)).toList(),
-                              ),
-                        const SizedBox(height: 24),
-                      ],
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: _buildAppBar(context, sharedProvider),
+      body: RefreshIndicator(
+        onRefresh: () async {},
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 16),
+              // Welcome Text
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Good ${DateTime.now().hour < 12 ? "Morning" : "Evening"}, ${user?.name.split(" ").first ?? "User"}',
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6), fontWeight: FontWeight.w600),
                     ),
-                  );
-                },
+                    const SizedBox(height: 4),
+                    Text(
+                      'Financial Overview',
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(height: 24),
+
+              // Hero Section - Total Balance
+              _buildHeroSection(totalBalance, monthlySummary, currency, theme),
+              
+              const SizedBox(height: 32),
+
+              // Middle Section - Financial Health & Reminders
+              _buildMiddleSection(context, commitmentProvider, goalProvider, currency, theme),
+
+              const SizedBox(height: 32),
+
+              // Charts Section
+              _buildChartsSection(txProvider.transactions, currency, theme, catProvider),
+
+              const SizedBox(height: 32),
+
+              // Recent Activity Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Recent Activity', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                    TextButton(
+                      onPressed: () => widget.onTabChange(1),
+                      child: Text('View All', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w700, fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ),
+              _buildRecentGroupedActivity(recentTransactions, currency, theme),
+              
+              const SizedBox(height: 100), // Bottom spacing for FAB and Nav
+            ],
+          ),
+        ),
+      ),
+      floatingActionButton: null,
     );
   }
 
-  Widget _buildPeriodSelector() {
-    final periods = ['Current Month', 'Last Month', 'Last 3 Months', 'This Year', 'All Time', 'Custom'];
-    return Container(
-      height: 50,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: periods.length,
-        itemBuilder: (context, index) {
-          final p = periods[index];
-          final isSelected = selectedPeriod == p;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(p, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-              selected: isSelected,
-              onSelected: (val) async {
-                if (p == 'Custom') {
-                  final range = await showDateRangePicker(
-                    context: context,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (range != null) {
-                    setState(() {
-                      customDateRange = range;
-                      selectedPeriod = p;
-                    });
-                  }
-                } else {
-                  setState(() => selectedPeriod = p);
-                }
-              },
-              selectedColor: const Color(0xFF0F766E),
-              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
-            ),
-          );
-        },
+  PreferredSizeWidget _buildAppBar(BuildContext context, SharedTransactionProvider shared) {
+    final theme = Theme.of(context);
+    final txProvider = Provider.of<TransactionProvider>(context);
+    final isSyncing = txProvider.isLoading;
+
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.menu_rounded, size: 28),
+        onPressed: () => widget.scaffoldKey.currentState?.openDrawer(),
       ),
-    );
-  }
-
-  Widget _buildCommitmentsSummary(CommitmentProvider provider, String currency, NumberFormat format, ThemeData theme) {
-    final upcoming = provider.getUpcomingCommitments();
-    if (upcoming.isEmpty) return const SizedBox.shrink();
-
-    final nextThree = upcoming.take(3).toList();
-    final totalDue = upcoming.fold(0.0, (sum, item) => sum + item.amount);
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.cardTheme.color,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.withAlpha(25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      centerTitle: true,
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Upcoming Commitments', style: theme.textTheme.titleMedium),
-              GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CommitmentsScreen())),
-                child: Text('See All', style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ...nextThree.map((c) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(color: theme.colorScheme.primary.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                  child: Icon(Icons.calendar_today, size: 16, color: theme.colorScheme.primary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(c.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      Text(DateFormat('dd MMM').format(c.nextDueDate ?? c.dueDate), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    ],
-                  ),
-                ),
-                Text('$currency ${format.format(c.amount)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              ],
+          Hero(
+            tag: 'logo',
+            child: Image.asset(
+              'assets/logo/ledgix_logo.png',
+              height: 52, // Increased size for visibility
+              fit: BoxFit.contain, 
+              errorBuilder: (c, e, s) => const Text('LEDGIX', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5))
             ),
-          )),
-          const Divider(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Total due this month', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              Text('$currency ${format.format(totalDue)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-            ],
           ),
+          if (isSyncing) ...[
+            const SizedBox(width: 12),
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.5)),
+          ]
         ],
       ),
-    );
-  }
-
-  Widget summaryMiniItem(String label, double amount, Color color, String currency) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+      actions: [
+        Stack(
           children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: Colors.white.withAlpha(153), fontSize: 12)),
+            IconButton(
+              icon: const Icon(Icons.notifications_none_rounded, size: 28),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const PendingApprovalsScreen())),
+            ),
+            if (shared.myActionCount > 0)
+              Positioned(
+                right: 12,
+                top: 12,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle, border: Border.all(color: theme.colorScheme.surface, width: 2)),
+                ),
+              ),
           ],
         ),
-        const SizedBox(height: 4),
-        FittedBox(
-          child: Text(
-            '$currency ${NumberFormat('#,##0').format(amount)}',
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ),
+        const SizedBox(width: 8),
       ],
     );
   }
 
-  Widget actionButton(IconData icon, String label, Color color) {
-    final theme = Theme.of(context);
+  Widget _buildHeroSection(double balance, Map<String, double> summary, String currency, ThemeData theme) {
     return GestureDetector(
-      onTap: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
-        );
-      },
+      onTap: () => widget.onTabChange(3), // Navigate to Accounts
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          color: theme.cardTheme.color,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.withAlpha(25)),
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: theme.colorScheme.outline),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10)),
+          ],
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color)),
+            Text(
+              'TOTAL BALANCE',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.4), fontWeight: FontWeight.w900, letterSpacing: 1.5),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: FittedBox(
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '$currency ${currencyFormat.format(balance)}',
+                      style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -1),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
+                  child: Icon(Icons.account_balance_wallet_rounded, color: theme.colorScheme.primary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                _summaryItem('Income', summary['income'] ?? 0, theme.colorScheme.secondary, currency, theme),
+                const SizedBox(width: 24),
+                _summaryItem('Expenses', summary['expense'] ?? 0, Colors.redAccent, currency, theme),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCharts(List<TransactionModel> transactions, String currency, ThemeData theme) {
-    final catProvider = Provider.of<CategoryProvider>(context, listen: false);
-    final expenseData = _getCategoryData(transactions, 'expense');
-    final incomeData = _getCategoryData(transactions, 'income');
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+  Widget _summaryItem(String label, double amount, Color color, String currency, ThemeData theme) {
+    return Expanded(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _chartCard('Expense Breakdown', expenseData, const Color(0xFFEF4444), currency, theme, catProvider),
-          const SizedBox(height: 16),
-          _chartCard('Income Breakdown', incomeData, const Color(0xFF10B981), currency, theme, catProvider),
+          Row(
+            children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            child: Text(
+              '$currency ${currencyFormat.format(amount)}',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ),
         ],
       ),
     );
   }
 
+  Widget _buildMiddleSection(BuildContext context, CommitmentProvider provider, GoalProvider goalProvider, String currency, ThemeData theme) {
+    final upcoming = provider.getUpcomingCommitments();
+    final totalSaved = goalProvider.getTotalSaved();
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('FINANCIAL HEALTH', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.4), fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => widget.onTabChange(2), // Navigate to Budgets
+                  child: _healthCard(
+                    'Budget', 
+                    '75%', 
+                    Icons.pie_chart_rounded, 
+                    theme.colorScheme.primary, 
+                    theme
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const GoalsScreen())),
+                  child: _healthCard(
+                    'Savings', 
+                    '$currency ${currencyFormat.format(totalSaved)}', 
+                    Icons.savings_rounded, 
+                    theme.colorScheme.secondary, 
+                    theme
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (upcoming.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('UPCOMING REMINDERS', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.4), fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CommitmentsScreen())),
+                  child: const Text('Manage', style: TextStyle(color: Color(0xFF218BFF), fontSize: 11, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...upcoming.take(2).map((c) => GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CommitmentsScreen())),
+              child: _reminderItem(c, currency, theme)
+            )),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _healthCard(String title, String value, IconData icon, Color color, ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: theme.colorScheme.outline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(height: 16),
+          Text(title, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface.withOpacity(0.6))),
+          const SizedBox(height: 4),
+          Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+        ],
+      ),
+    );
+  }
+
+  Widget _reminderItem(dynamic commitment, String currency, ThemeData theme) {
+    final date = commitment.nextDueDate ?? commitment.dueDate;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.colorScheme.outline),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.calendar_month_rounded, color: Colors.amber, size: 20),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(commitment.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                Text(DateFormat('dd MMM yyyy').format(date), style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+          Text('$currency ${currencyFormat.format(commitment.amount)}', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartsSection(List<TransactionModel> txs, String currency, ThemeData theme, CategoryProvider catP) {
+    final expenseData = _getCategoryData(txs, 'expense');
+    if (expenseData.isEmpty) return const SizedBox.shrink();
+
+    final total = expenseData.values.fold(0.0, (sum, val) => sum + val);
+    final sortedKeys = expenseData.keys.toList()..sort((a, b) => expenseData[b]!.compareTo(expenseData[a]!));
+    
+    List<PieChartSectionData> sections = [];
+    final displayKeys = sortedKeys.take(4).toList();
+
+    for (int i = 0; i < displayKeys.length; i++) {
+      final key = displayKeys[i];
+      final val = expenseData[key]!;
+      sections.add(PieChartSectionData(
+        value: val,
+        color: catP.getColorForCategory(key, null),
+        radius: 35,
+        showTitle: false,
+      ));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('EXPENSE ANALYSIS', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.4), fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ExpenseReportsPage())),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: theme.colorScheme.outline),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    height: 120,
+                    width: 120,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        PieChart(
+                          PieChartData(
+                            sections: sections, 
+                            centerSpaceRadius: 35, 
+                            sectionsSpace: 3,
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'TOTAL',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w900,
+                                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                              ),
+                            ),
+                            FittedBox(
+                              child: Text(
+                                formatCompact(total),
+                                style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w900, color: const Color(0xFF218BFF)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    child: Column(
+                      children: displayKeys.map((k) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Container(width: 8, height: 8, decoration: BoxDecoration(color: catP.getColorForCategory(k, null), shape: BoxShape.circle)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(k, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            Text('${(expenseData[k]! / total * 100).toStringAsFixed(0)}%', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String formatCompact(double value) {
+    return NumberFormat.compact().format(value);
+  }
+
   Map<String, double> _getCategoryData(List<TransactionModel> transactions, String targetType) {
+    final now = DateTime.now();
     Map<String, double> data = {};
     for (var tx in transactions) {
-      final type = tx.type.toLowerCase();
-      bool matches = false;
-      if (targetType == 'expense') {
-        matches = ['expense', 'repayment_paid', 'lend'].contains(type);
-      } else if (targetType == 'income') {
-        matches = ['income', 'repayment_received', 'borrow'].contains(type);
-      }
+      if (tx.status == 'pending' || tx.status == 'rejected') continue;
+      // Show ONLY current month data
+      if (tx.date.month != now.month || tx.date.year != now.year) continue;
 
-      if (matches) {
+      final type = tx.type.toLowerCase();
+      if (type == targetType) {
         data[tx.category] = (data[tx.category] ?? 0) + tx.amount;
       }
     }
     return data;
   }
 
-  Widget _chartCard(String title, Map<String, double> data, Color baseColor, String currency, ThemeData theme, CategoryProvider catP) {
-    if (data.isEmpty) {
-      return Card(
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          child: Column(
+  Widget _buildRecentGroupedActivity(List<TransactionModel> txs, String currency, ThemeData theme) {
+    if (txs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('No transactions yet')));
+
+    // Group transactions by date
+    Map<String, List<TransactionModel>> grouped = {};
+    for (var tx in txs) {
+      String dateKey = DateFormat('yyyy-MM-dd').format(tx.date);
+      if (!grouped.containsKey(dateKey)) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey]!.add(tx);
+    }
+
+    var sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Column(
+        children: sortedKeys.map((dateKey) {
+          final date = DateTime.parse(dateKey);
+          final dayTxs = grouped[dateKey]!;
+          final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == dateKey;
+          final displayDate = isToday ? 'Today' : DateFormat('EEEE, MMM d').format(date);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: theme.textTheme.titleMedium),
-              const SizedBox(height: 20),
-              Text('No ${title.toLowerCase()} data yet', style: const TextStyle(color: Colors.grey)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final total = data.values.fold(0.0, (sum, val) => sum + val);
-    final sortedKeys = data.keys.toList()..sort((a, b) => data[b]!.compareTo(data[a]!));
-    
-    List<PieChartSectionData> sections = [];
-    final displayKeys = sortedKeys.take(5).toList();
-    double otherSum = 0;
-    if (sortedKeys.length > 5) {
-      otherSum = sortedKeys.skip(5).fold(0.0, (sum, k) => sum + data[k]!);
-    }
-
-    for (int i = 0; i < displayKeys.length; i++) {
-      final key = displayKeys[i];
-      final val = data[key]!;
-      final percentage = (val / total * 100).toStringAsFixed(1);
-      
-      // Get consistent color for category
-      final catColor = catP.getColorForCategory(key, null);
-
-      sections.add(PieChartSectionData(
-        value: val,
-        title: '$percentage%',
-        color: catColor,
-        radius: 50,
-        titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-      ));
-    }
-
-    if (otherSum > 0) {
-      sections.add(PieChartSectionData(
-        value: otherSum,
-        title: '${(otherSum / total * 100).toStringAsFixed(1)}%',
-        color: Colors.grey.withOpacity(0.5),
-        radius: 50,
-        titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-      ));
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(title, style: theme.textTheme.titleMedium),
-                Text('$currency ${NumberFormat('#,##0').format(total)}', style: TextStyle(color: baseColor, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 180,
-              child: PieChart(
-                PieChartData(
-                  sections: sections,
-                  centerSpaceRadius: 40,
-                  sectionsSpace: 2,
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 12, top: 8),
+                child: Text(
+                  displayDate.toUpperCase(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            // Legend
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                ...displayKeys.map((key) {
-                  final catColor = catP.getColorForCategory(key, null);
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 8, height: 8, decoration: BoxDecoration(color: catColor, shape: BoxShape.circle)),
-                      const SizedBox(width: 4),
-                      Text(key, style: const TextStyle(fontSize: 11)),
-                    ],
-                  );
-                }),
-                if (otherSum > 0)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.grey, shape: BoxShape.circle)),
-                      const SizedBox(width: 4),
-                      const Text('Others', style: TextStyle(fontSize: 11)),
-                    ],
+              ...dayTxs.map((tx) {
+                final isIncome = ['income', 'repayment_received', 'borrow', 'loan_received'].contains(tx.type.toLowerCase());
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: theme.colorScheme.outline),
                   ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget transactionListItem(TransactionModel item, String currency, BuildContext context) {
-    final isIncome = item.type == 'income' || item.type == 'repayment_received' || item.type == 'borrow';
-    final isExpense = item.type == 'expense' || item.type == 'repayment_paid' || item.type == 'lend';
-    final isTransfer = item.type == 'transfer';
-    
-    final color = isIncome 
-        ? const Color(0xFF10B981) 
-        : isExpense 
-            ? const Color(0xFFEF4444) 
-            : const Color(0xFF7C3AED);
-
-    IconData iconData = Icons.swap_horiz_rounded;
-    if (isIncome) iconData = Icons.arrow_upward_rounded;
-    if (isExpense) iconData = Icons.arrow_downward_rounded;
-
-    return Card(
-      child: ListTile(
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => AddExpenseScreen(transaction: item)),
+                  child: ListTile(
+                    onTap: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => TransactionDetailSheet(transaction: tx, currency: currency),
+                      );
+                    },
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.background,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        isIncome ? Icons.south_west_rounded : Icons.north_east_rounded,
+                        color: isIncome ? theme.colorScheme.primary : Colors.redAccent,
+                        size: 18,
+                      ),
+                    ),
+                    title: Text(tx.category, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                    subtitle: Text(tx.account, style: theme.textTheme.bodySmall?.copyWith(fontSize: 11)),
+                    trailing: Text(
+                      '${isIncome ? "+" : "-"} ${currencyFormat.format(tx.amount)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: isIncome ? theme.colorScheme.primary : theme.textTheme.bodyMedium?.color,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
           );
-        },
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: color.withAlpha(20),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            iconData,
-            color: color,
-            size: 20,
-          ),
-        ),
-        title: Row(
-          children: [
-            Expanded(child: Text(item.category, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
-            if (item.attachmentPath != null && item.attachmentPath!.isNotEmpty)
-              const Icon(Icons.attachment_rounded, size: 14, color: Colors.grey),
-          ],
-        ),
-        subtitle: Text(
-          isTransfer ? '${item.account} → ${item.toAccount}' : item.account, 
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: FittedBox(
-          child: Text(
-            '${isIncome ? '+' : (isExpense ? '-' : '')} $currency ${NumberFormat('#,##0.00').format(item.amount)}',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-              color: color,
-            ),
-          ),
-        ),
+        }).toList(),
       ),
     );
   }

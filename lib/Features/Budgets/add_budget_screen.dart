@@ -4,10 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'budget_model.dart';
 import 'budget_provider.dart';
-import '../Categories/category_model.dart';
 import '../Categories/category_provider.dart';
 import '../Categories/add_category_screen.dart';
 import '../../Core/settings_provider.dart';
+import '../../shared/widgets/app_button.dart';
 
 class AddBudgetScreen extends StatefulWidget {
   final BudgetModel? budget;
@@ -43,9 +43,11 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
   @override
   Widget build(BuildContext context) {
     bool isEditing = widget.budget != null;
-    final String currency = Provider.of<SettingsProvider>(context).currency;
+    final settings = Provider.of<SettingsProvider>(context);
+    final String currency = settings.currency;
     final catProvider = Provider.of<CategoryProvider>(context);
     final budgetProvider = Provider.of<BudgetProvider>(context);
+    final theme = Theme.of(context);
     final categories = catProvider.expenseCategories;
 
     if (selectedCategory == null && categories.isNotEmpty) {
@@ -53,31 +55,41 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     }
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(isEditing ? 'Edit Budget' : 'Set Budget'),
+        title: Text(isEditing ? 'Edit Budget' : 'Set Budget', style: const TextStyle(fontWeight: FontWeight.w900)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              'BUDGET PARAMETERS',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
             DropdownButtonFormField<String>(
-              value: (selectedCategory != null && categories.any((c) => c.name == selectedCategory))
+              initialValue: (selectedCategory != null && categories.any((c) => c.name == selectedCategory))
                   ? selectedCategory
                   : null,
               decoration: const InputDecoration(
                 labelText: 'Category',
-                border: OutlineInputBorder(),
               ),
               items: [
                 ...categories.map((cat) => DropdownMenuItem(value: cat.name, child: Text(cat.name))),
-                const DropdownMenuItem(
+                DropdownMenuItem(
                   value: 'quick_add_category',
                   child: Row(
                     children: [
-                      Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF0F766E)),
-                      SizedBox(width: 8),
-                      Text('Add Category', style: TextStyle(color: Color(0xFF0F766E), fontWeight: FontWeight.bold)),
+                      Icon(Icons.add_circle_outline, size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text('Add Category', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -96,7 +108,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                 }
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             TextField(
               controller: limitController,
               keyboardType: TextInputType.number,
@@ -104,35 +116,33 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                 FilteringTextInputFormatter.digitsOnly,
                 CurrencyInputFormatter(),
               ],
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface),
               textAlign: TextAlign.center,
               decoration: InputDecoration(
                 labelText: 'Limit Amount',
                 prefixText: '$currency ',
                 floatingLabelBehavior: FloatingLabelBehavior.always,
-                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _quickAmountButton(limitController, '00'),
+                _quickAmountButton(limitController, '00', theme),
                 const SizedBox(width: 16),
-                _quickAmountButton(limitController, '000'),
+                _quickAmountButton(limitController, '000', theme),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             DropdownButtonFormField<String>(
-              value: selectedPeriod,
+              initialValue: selectedPeriod,
               decoration: const InputDecoration(
                 labelText: 'Period',
-                border: OutlineInputBorder(),
               ),
               items: periods.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
               onChanged: (val) => setState(() => selectedPeriod = val!),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             InkWell(
               onTap: () async {
                 final date = await showDatePicker(
@@ -149,105 +159,102 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
               child: InputDecorator(
                 decoration: const InputDecoration(
                   labelText: 'Period Date',
-                  border: OutlineInputBorder(),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(selectedPeriod == 'Monthly'
-                        ? DateFormat('MMMM yyyy').format(selectedDate)
-                        : 'Week of ${DateFormat('dd MMM yyyy').format(selectedDate.subtract(Duration(days: selectedDate.weekday - 1)))}'),
-                    const Icon(Icons.calendar_today),
+                    Text(
+                      selectedPeriod == 'Monthly'
+                          ? DateFormat('MMMM yyyy').format(selectedDate)
+                          : 'Week of ${DateFormat('dd MMM yyyy').format(selectedDate.subtract(Duration(days: selectedDate.weekday - 1)))}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const Icon(Icons.calendar_today, size: 18),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             TextField(
               controller: notesController,
               decoration: const InputDecoration(
                 labelText: 'Notes (Optional)',
-                border: OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
-            const SizedBox(height: 40),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
-                onPressed: () async {
-                  final limit = double.tryParse(limitController.text.replaceAll(',', '')) ?? 0;
-                  if (selectedCategory == null || limit <= 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please select a category and enter a valid limit.'))
-                    );
-                    return;
-                  }
-
-                  final budget = BudgetModel(
-                    id: widget.budget?.id,
-                    category: selectedCategory!,
-                    amountLimit: limit,
-                    period: selectedPeriod,
-                    month: selectedDate.month,
-                    year: selectedDate.year,
-                    notes: notesController.text.isEmpty ? null : notesController.text,
+            const SizedBox(height: 48),
+            AppButton(
+              label: isEditing ? 'Update Budget' : 'Save Budget',
+              onPressed: () async {
+                final limit = double.tryParse(limitController.text.replaceAll(',', '')) ?? 0;
+                if (selectedCategory == null || limit <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please select a category and enter a valid limit.'))
                   );
+                  return;
+                }
 
-                  if (isEditing) {
-                    await budgetProvider.saveBudget(budget);
-                  } else {
-                    final existingList = budgetProvider.budgets.where((b) => 
-                      b.category == budget.category && 
-                      b.period == budget.period && 
-                      b.month == budget.month && 
-                      b.year == budget.year
-                    ).toList();
+                final budget = BudgetModel(
+                  id: widget.budget?.id,
+                  category: selectedCategory!,
+                  amountLimit: limit,
+                  period: selectedPeriod,
+                  month: selectedDate.month,
+                  year: selectedDate.year,
+                  notes: notesController.text.isEmpty ? null : notesController.text,
+                );
 
-                    if (existingList.isNotEmpty) {
-                      final existing = existingList.first;
-                      if (mounted) {
-                        final update = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Budget Already Exists'),
-                            content: Text('A budget for $selectedCategory in ${DateFormat('MMMM yyyy').format(selectedDate)} already exists. Would you like to update it instead?'),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text('Update Existing'),
-                              ),
-                            ],
-                          ),
-                        );
+                if (isEditing) {
+                  await budgetProvider.saveBudget(budget);
+                } else {
+                  final existingList = budgetProvider.budgets.where((b) => 
+                    b.category == budget.category && 
+                    b.period == budget.period && 
+                    b.month == budget.month && 
+                    b.year == budget.year
+                  ).toList();
 
-                        if (update == true) {
-                          final updatedBudget = budget.copyWith(id: existing.id);
-                          await budgetProvider.saveBudget(updatedBudget);
-                        } else {
-                          return;
-                        }
+                  if (existingList.isNotEmpty) {
+                    final existing = existingList.first;
+                    if (mounted) {
+                      final update = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Budget Already Exists'),
+                          content: Text('A budget for $selectedCategory in ${DateFormat('MMMM yyyy').format(selectedDate)} already exists. Would you like to update it instead?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Update Existing'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (update == true) {
+                        final updatedBudget = budget.copyWith(id: existing.id);
+                        await budgetProvider.saveBudget(updatedBudget);
+                      } else {
+                        return;
                       }
-                    } else {
-                      await budgetProvider.saveBudget(budget);
                     }
+                  } else {
+                    await budgetProvider.saveBudget(budget);
                   }
+                }
 
-                  if (mounted) Navigator.pop(context);
-                },
-                child: Text(isEditing ? 'Update Budget' : 'Save Budget', style: const TextStyle(color: Colors.white)),
-              ),
+                if (mounted) Navigator.pop(context);
+              },
             ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
-  Widget _quickAmountButton(TextEditingController controller, String label) {
+  Widget _quickAmountButton(TextEditingController controller, String label, ThemeData theme) {
     return OutlinedButton(
       onPressed: () {
         String currentText = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
@@ -261,13 +268,13 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
         });
       },
       style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Color(0xFF0F766E)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        side: BorderSide(color: theme.colorScheme.outline),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       ),
       child: Text(
-        label,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
+        '+$label',
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withOpacity(0.6)),
       ),
     );
   }

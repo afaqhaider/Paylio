@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../Core/settings_provider.dart';
 import 'account_model.dart';
 import 'account_provider.dart';
+import '../../shared/widgets/app_button.dart';
 
 class AddAccountScreen extends StatefulWidget {
   final String? initialName;
@@ -19,14 +20,15 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   final balanceController = TextEditingController(text: "0.00");
   final limitController = TextEditingController(text: "0.00");
 
-  String selectedType = 'Cash';
+  String selectedType = 'Bank';
   bool hasDirectDebit = false;
 
   final accountTypes = [
-    'Cash',
     'Bank',
+    'Cash',
     'Credit Card',
-    'Wallet',
+    'Savings',
+    'Investment',
     'Loan',
   ];
 
@@ -40,32 +42,45 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final String currency = Provider.of<SettingsProvider>(context).currency;
+    final settings = Provider.of<SettingsProvider>(context);
+    final String currency = settings.currency;
+    final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Add Account'),
+        title: const Text('Add Account', style: TextStyle(fontWeight: FontWeight.w900)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              'ACCOUNT IDENTITY',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
             TextField(
               controller: nameController,
+              style: const TextStyle(fontWeight: FontWeight.bold),
               decoration: const InputDecoration(
                 labelText: 'Account Name',
-                border: OutlineInputBorder(),
+                hintText: 'e.g. Emirates NBD, Personal Cash',
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
 
             DropdownButtonFormField<String>(
-              value: selectedType,
+              initialValue: selectedType,
               decoration: const InputDecoration(
                 labelText: 'Account Type',
-                border: OutlineInputBorder(),
               ),
               items: accountTypes.map((type) {
                 return DropdownMenuItem(
@@ -81,7 +96,16 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
             ),
 
             if (selectedType == 'Credit Card') ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 32),
+              Text(
+                'CREDIT FACILITY',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.redAccent.withOpacity(0.7),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
               TextField(
                 controller: limitController,
                 keyboardType: TextInputType.number,
@@ -89,39 +113,46 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                   FilteringTextInputFormatter.digitsOnly,
                   CurrencyInputFormatter(),
                 ],
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: theme.colorScheme.onSurface),
                 textAlign: TextAlign.center,
                 decoration: InputDecoration(
-                  labelText: 'Credit Card Limit',
+                  labelText: 'Credit Limit',
                   prefixText: '$currency ',
                   floatingLabelBehavior: FloatingLabelBehavior.always,
-                  border: const OutlineInputBorder(),
-                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFFDC2626), width: 2)),
                 ),
               ),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _quickAmountButton(limitController, '00'),
+                  _quickAmountButton(limitController, '00', theme),
                   const SizedBox(width: 16),
-                  _quickAmountButton(limitController, '000'),
+                  _quickAmountButton(limitController, '000', theme),
                 ],
               ),
             ],
 
-            if (selectedType == 'Bank') ...[
-              const SizedBox(height: 10),
-              CheckboxListTile(
-                title: const Text('Has direct debit commitments'),
+            if (selectedType == 'Bank' || selectedType == 'Savings') ...[
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Direct Debit Enabled', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text('Allow recurring commitments from this account', style: TextStyle(fontSize: 12)),
                 value: hasDirectDebit,
-                onChanged: (val) => setState(() => hasDirectDebit = val ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
+                activeColor: theme.colorScheme.primary,
+                onChanged: (val) => setState(() => hasDirectDebit = val),
               ),
             ],
 
-            const SizedBox(height: 20),
-
+            const SizedBox(height: 32),
+            Text(
+              'INITIAL STATUS',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary.withOpacity(0.7),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 16),
             TextField(
               controller: balanceController,
               keyboardType: TextInputType.number,
@@ -129,13 +160,12 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                 FilteringTextInputFormatter.digitsOnly,
                 CurrencyInputFormatter(),
               ],
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: theme.colorScheme.primary),
               textAlign: TextAlign.center,
               decoration: InputDecoration(
                 labelText: 'Opening Balance',
                 prefixText: '$currency ',
                 floatingLabelBehavior: FloatingLabelBehavior.always,
-                border: const OutlineInputBorder(),
               ),
             ),
 
@@ -143,53 +173,49 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _quickAmountButton(balanceController, '00'),
+                _quickAmountButton(balanceController, '00', theme),
                 const SizedBox(width: 16),
-                _quickAmountButton(balanceController, '000'),
+                _quickAmountButton(balanceController, '000', theme),
               ],
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 48),
 
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
-               onPressed: () async {
-                 if (nameController.text.trim().isEmpty) {
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter account name')));
-                   return;
-                 }
+            AppButton(
+              label: 'Initialize Account',
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter account name')));
+                  return;
+                }
 
-                 double limit = double.tryParse(limitController.text.replaceAll(',', '')) ?? 0;
-                 if (selectedType == 'Credit Card' && limit <= 0) {
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid credit card limit')));
-                   return;
-                 }
+                double limit = double.tryParse(limitController.text.replaceAll(',', '')) ?? 0;
+                if (selectedType == 'Credit Card' && limit <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid credit card limit')));
+                  return;
+                }
 
-                 final newAccount = AccountModel(
-                   name: nameController.text.trim(),
-                   type: selectedType,
-                   openingBalance: double.tryParse(balanceController.text.replaceAll(',', '')) ?? 0,
-                   creditLimit: selectedType == 'Credit Card' ? limit : null,
-                   hasDirectDebit: hasDirectDebit,
-                 );
+                final newAccount = AccountModel(
+                  name: nameController.text.trim(),
+                  type: selectedType,
+                  openingBalance: double.tryParse(balanceController.text.replaceAll(',', '')) ?? 0,
+                  creditLimit: selectedType == 'Credit Card' ? limit : null,
+                  hasDirectDebit: hasDirectDebit,
+                );
 
-                 await Provider.of<AccountProvider>(context, listen: false).saveAccount(newAccount);
+                await Provider.of<AccountProvider>(context, listen: false).saveAccount(newAccount);
 
-                 if (mounted) Navigator.pop(context, newAccount.name);
-               },
-                child: const Text('Save', style: TextStyle(color: Colors.white)),
-              ),
+                if (mounted) Navigator.pop(context, newAccount.name);
+              },
             ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
-  Widget _quickAmountButton(TextEditingController controller, String label) {
+  Widget _quickAmountButton(TextEditingController controller, String label, ThemeData theme) {
     return OutlinedButton(
       onPressed: () {
         String currentText = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
@@ -203,13 +229,13 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
         });
       },
       style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Color(0xFF0F766E)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        side: BorderSide(color: theme.colorScheme.outline),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       ),
       child: Text(
-        label,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F766E)),
+        '+$label',
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withOpacity(0.6)),
       ),
     );
   }

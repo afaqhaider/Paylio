@@ -15,7 +15,7 @@ class BackupService {
       final jsonString = jsonEncode(data);
       
       final timestamp = DateFormat('yyyy_MM_dd_HHmm').format(DateTime.now());
-      final fileName = 'paylio_backup_$timestamp.json';
+      final fileName = 'ledgix_backup_$timestamp.json';
 
       if (kIsWeb) {
         // Web download logic (not fully implemented with share_plus, usually use anchor tag)
@@ -27,7 +27,7 @@ class BackupService {
       final file = File('${directory.path}/$fileName');
       await file.writeAsString(jsonString);
 
-      await Share.shareXFiles([XFile(file.path)], text: 'Paylio Data Backup');
+      await Share.shareXFiles([XFile(file.path)], text: 'LedGix Data Backup');
     } catch (e) {
       throw Exception('Failed to export backup: $e');
     }
@@ -56,7 +56,7 @@ class BackupService {
       String csvData = const ListToCsvConverter().convert(rows);
       
       final timestamp = DateFormat('yyyy_MM_dd_HHmm').format(DateTime.now());
-      final fileName = 'paylio_transactions_$timestamp.csv';
+      final fileName = 'ledgix_transactions_$timestamp.csv';
 
       if (kIsWeb) return;
 
@@ -64,7 +64,7 @@ class BackupService {
       final file = File('${directory.path}/$fileName');
       await file.writeAsString(csvData);
 
-      await Share.shareXFiles([XFile(file.path)], text: 'Paylio Transactions Export');
+      await Share.shareXFiles([XFile(file.path)], text: 'LedGix Transactions Export');
     } catch (e) {
       throw Exception('Failed to export CSV: $e');
     }
